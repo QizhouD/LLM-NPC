@@ -43,8 +43,8 @@ Install Git LFS **before** cloning. A clone without LFS checks out pointer files
 
 ```bash
 git lfs install
-git clone https://github.com/<YOUR_ORG_OR_USER>/Unity-digital-Human.git
-cd Unity-digital-Human
+git clone https://github.com/QizhouD/LLM-NPC.git
+cd LLM-NPC
 git lfs pull
 ```
 
