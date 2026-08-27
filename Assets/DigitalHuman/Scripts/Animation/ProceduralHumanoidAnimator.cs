@@ -14,6 +14,7 @@ namespace DigitalHuman
     /// the captured rest pose is used as the base so offsets cannot accumulate.
     /// </remarks>
     [DisallowMultipleComponent]
+    [DefaultExecutionOrder(100)]
     public sealed class ProceduralHumanoidAnimator : MonoBehaviour
     {
         [Header("Sources")]

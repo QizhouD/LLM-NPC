@@ -79,5 +79,44 @@ namespace DigitalHuman.Tests
             Assert.That(prompt, Does.Contain("Stay in character."));
             Assert.That(prompt, Does.Contain("Do not describe yourself as a chatbot"));
         }
+
+        /// <summary>
+        /// The prompt enumerates the vocabularies from the enums, so this guards against the
+        /// prompt and the parser drifting apart.
+        /// </summary>
+        [Test]
+        public void BuildSystemPrompt_EnumeratesEveryIntentAndEmotion()
+        {
+            string prompt = persona.BuildSystemPrompt();
+
+            Assert.That(prompt, Does.Contain("[intent:"));
+            Assert.That(prompt, Does.Contain("[emotion:"));
+            foreach (string name in MotionIntents.Names)
+            {
+                Assert.That(prompt, Does.Contain(name), $"intent '{name}' missing from prompt");
+            }
+
+            foreach (string name in FaceEmotions.Names)
+            {
+                Assert.That(prompt, Does.Contain(name), $"emotion '{name}' missing from prompt");
+            }
+        }
+
+        /// <summary>
+        /// The example the prompt shows the model must survive the parser it is teaching the
+        /// model to satisfy.
+        /// </summary>
+        [Test]
+        public void BuildSystemPrompt_ExampleParsesCleanly()
+        {
+            ResponseAnnotation parsed = ResponseAnnotationParser.Parse(
+                "Of course, follow me. [intent:walk][emotion:curious]");
+
+            Assert.That(persona.BuildSystemPrompt(),
+                Does.Contain("Of course, follow me. [intent:walk][emotion:curious]"));
+            Assert.That(parsed.HasIntent, Is.True);
+            Assert.That(parsed.HasEmotion, Is.True);
+            Assert.That(parsed.Text, Is.EqualTo("Of course, follow me."));
+        }
     }
 }

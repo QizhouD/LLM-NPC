@@ -222,6 +222,31 @@ namespace DigitalHuman.Editor
                     report.Append("linked ProceduralHumanoidAnimator; ");
                 }
 
+                ProceduralFaceController face = contents.GetComponent<ProceduralFaceController>();
+                if (face == null)
+                {
+                    face = contents.AddComponent<ProceduralFaceController>();
+                    report.Append("added ProceduralFaceController; ");
+                }
+
+                face.AutoBind(
+                    visual,
+                    contents.GetComponent<DigitalHumanController>(),
+                    contents.GetComponent<LookAtController>(),
+                    null,
+                    out string faceReport);
+                report.Append(faceReport).Append("; ");
+
+                ResponseAnnotationDriver driver =
+                    contents.GetComponent<ResponseAnnotationDriver>();
+                if (driver == null)
+                {
+                    driver = contents.AddComponent<ResponseAnnotationDriver>();
+                    report.Append("added ResponseAnnotationDriver; ");
+                }
+
+                driver.Configure(contents.GetComponent<DialogueController>(), intent, face);
+
                 report.Append("ok");
 
                 PrefabUtility.SaveAsPrefabAsset(contents, VexaPrefabPath);

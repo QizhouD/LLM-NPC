@@ -37,6 +37,12 @@ namespace DigitalHuman
         public event Action<string> PlayerMessageSubmitted;
         public event Action ThinkingStarted;
         public event Action<string> NpcResponseReceived;
+
+        /// <summary>
+        /// Raised alongside <see cref="NpcResponseReceived"/> with the behaviour tags the
+        /// model attached to the reply. Drives animation and face.
+        /// </summary>
+        public event Action<ResponseAnnotation> ResponseAnnotationReceived;
         public event Action<Exception> RequestFailed;
 
         private void Awake()
@@ -166,11 +172,13 @@ namespace DigitalHuman
             dialogueUI?.AppendPlayerMessage(trimmedMessage);
             PlayerMessageSubmitted?.Invoke(trimmedMessage);
             ResolveAgentCommands();
-            if (agentCommandController != null &&
-                agentCommandController.ExecuteCommand(trimmedMessage))
-            {
-                return;
-            }
+
+            // The keyword parser used to run first and return, which meant every command-like
+            // input bypassed the model entirely. The model now always gets the message; the
+            // parser only supplies the world action, or takes over if the model is unreachable.
+            bool looksLikeCommand = agentCommandController != null &&
+                                    agentCommandController.CanHandle(trimmedMessage);
+            bool modelAnswered = false;
 
             IsBusy = true;
             ThinkingStarted?.Invoke();
@@ -196,9 +204,15 @@ namespace DigitalHuman
                 }
 
                 localCancellation.Token.ThrowIfCancellationRequested();
-                ReceiveNpcResponse(string.IsNullOrWhiteSpace(response)
-                    ? requestFailedMessage
-                    : response.Trim());
+                if (string.IsNullOrWhiteSpace(response))
+                {
+                    ReceiveNpcResponse(requestFailedMessage);
+                }
+                else
+                {
+                    ReceiveNpcResponse(response.Trim());
+                    modelAnswered = service != null;
+                }
             }
             catch (OperationCanceledException) when (localCancellation.IsCancellationRequested)
             {
@@ -228,6 +242,16 @@ namespace DigitalHuman
 
                 localCancellation.Dispose();
             }
+
+            if (!looksLikeCommand || !IsDialogueActive)
+            {
+                return;
+            }
+
+            // The model has already spoken, so the parser executes the world action without
+            // overwriting the reply. Failures still speak, because silence would be worse.
+            agentCommandController.ExecuteCommand(
+                trimmedMessage, announceAcknowledgements: !modelAnswered);
         }
 
         public void ReceiveNpcResponse(string response)
@@ -237,9 +261,14 @@ namespace DigitalHuman
                 return;
             }
 
-            string safeResponse = response ?? string.Empty;
-            dialogueUI?.SetDialogueText(safeResponse);
-            NpcResponseReceived?.Invoke(safeResponse);
+            // Tags are stripped before anything downstream sees the text, so they can never
+            // reach the dialogue box or the voice service.
+            ResponseAnnotation annotation =
+                ResponseAnnotationParser.Parse(response ?? string.Empty);
+
+            dialogueUI?.SetDialogueText(annotation.Text);
+            NpcResponseReceived?.Invoke(annotation.Text);
+            ResponseAnnotationReceived?.Invoke(annotation);
         }
 
         private void HandlePlayerEnteredRange(Transform _)

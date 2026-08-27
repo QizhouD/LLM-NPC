@@ -24,6 +24,7 @@ namespace DigitalHuman
         [SerializeField, Min(0f)] private float acknowledgementDelay = 0.2f;
 
         private Coroutine activeCommand;
+        private bool announceAcknowledgementsInternal = true;
 
         public AgentNpcState CurrentState { get; private set; } = AgentNpcState.Idle;
         public bool IsExecutingCommand => activeCommand != null;
@@ -64,7 +65,27 @@ namespace DigitalHuman
             interaction = agentInteraction;
         }
 
+        /// <summary>
+        /// Whether the keyword parser recognises <paramref name="command"/>, without acting on
+        /// it. Lets the dialogue controller send the message to the model first and still know
+        /// that a world action is available.
+        /// </summary>
+        public bool CanHandle(string command)
+        {
+            return TryParse(Normalize(command), out _, out _, out _);
+        }
+
         public bool ExecuteCommand(string command)
+        {
+            return ExecuteCommand(command, true);
+        }
+
+        /// <summary>
+        /// Executes a parsed command. When <paramref name="announceAcknowledgements"/> is
+        /// false the "Okay, I'll ..." and success lines are logged but not spoken, so they do
+        /// not overwrite a reply the language model already produced. Failures always speak.
+        /// </summary>
+        public bool ExecuteCommand(string command, bool announceAcknowledgements)
         {
             string normalized = Normalize(command);
             if (!TryParse(
@@ -76,6 +97,7 @@ namespace DigitalHuman
                 return false;
             }
 
+            announceAcknowledgementsInternal = announceAcknowledgements;
             ResolveReferences();
             EnsurePlaceSurface();
             if (activeCommand != null)
@@ -356,14 +378,20 @@ namespace DigitalHuman
             SetState(AgentNpcState.Idle);
         }
 
-        private void Respond(string message, bool log)
+        /// <summary>
+        /// Speaks a line. <paramref name="isAcknowledgement"/> marks progress and success
+        /// lines, which are suppressed when the language model already answered; failures and
+        /// notices pass it as false and are always spoken.
+        /// </summary>
+        private void Respond(string message, bool isAcknowledgement)
         {
-            if (dialogueController != null && dialogueController.IsDialogueActive)
+            bool speak = !isAcknowledgement || announceAcknowledgementsInternal;
+            if (speak && dialogueController != null && dialogueController.IsDialogueActive)
             {
                 dialogueController.ReceiveNpcResponse(message);
             }
 
-            if (log)
+            if (isAcknowledgement)
             {
                 Debug.Log($"[AgentNPC] {message}", this);
             }

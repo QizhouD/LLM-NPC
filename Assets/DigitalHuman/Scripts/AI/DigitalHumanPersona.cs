@@ -91,6 +91,8 @@ namespace DigitalHuman
                 .AppendLine("Do not describe yourself as a chatbot or language model.")
                 .AppendLine("Keep responses concise and conversational.");
 
+            AppendBehaviourTagInstructions(prompt);
+
             if (!string.IsNullOrWhiteSpace(additionalContext))
             {
                 prompt.AppendLine()
@@ -99,6 +101,27 @@ namespace DigitalHuman
             }
 
             return prompt.ToString().Trim();
+        }
+
+        /// <summary>
+        /// Asks the model to end each reply with two bounded tags that drive the body and
+        /// face. The vocabularies are enumerated from the enums rather than hard-coded, so
+        /// prompt and parser cannot drift apart.
+        /// </summary>
+        private static void AppendBehaviourTagInstructions(StringBuilder prompt)
+        {
+            prompt.AppendLine()
+                .AppendLine("You have a body. End every reply with exactly two tags:")
+                .Append("[intent:<one of ")
+                .Append(string.Join(" | ", MotionIntents.Names))
+                .AppendLine(">]")
+                .Append("[emotion:<one of ")
+                .Append(string.Join(" | ", FaceEmotions.Names))
+                .AppendLine(">]")
+                .AppendLine("Example: Of course, follow me. [intent:walk][emotion:curious]")
+                .AppendLine("Use exactly those spellings and nothing outside those lists.")
+                .AppendLine("Put the tags last, after all prose, on the same line.")
+                .AppendLine("Never mention or explain the tags; they are stripped before display.");
         }
 
         private static string Normalize(string value, string fallback)
