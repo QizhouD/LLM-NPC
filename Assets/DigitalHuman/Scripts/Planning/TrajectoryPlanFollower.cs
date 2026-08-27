@@ -86,6 +86,22 @@ namespace DigitalHuman.Planning
             StopFollowing();
         }
 
+        /// <summary>Binds the follower's dependencies. Used by the editor wiring tool.</summary>
+        public void Configure(
+            MonoBehaviour sourceComponent,
+            MotionIntentAnimator animator,
+            AgentMovement movement)
+        {
+            planSource = sourceComponent;
+            source = sourceComponent as ITrajectoryPlanSource;
+            intentAnimator = animator;
+            navMeshMovement = movement;
+            if (root == null)
+            {
+                root = transform;
+            }
+        }
+
         /// <summary>Replaces the plan source at runtime, for example to switch to a live service.</summary>
         public void SetPlanSource(ITrajectoryPlanSource newSource)
         {

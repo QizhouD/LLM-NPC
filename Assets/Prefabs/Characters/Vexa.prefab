@@ -135,6 +135,18 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 9148599187047371230, guid: 5e6fe4c989f824c4e9debdeee02d8777, type: 3}
       insertIndex: -1
       addedObject: {fileID: 1148264756852702499}
+    - targetCorrespondingSourceObject: {fileID: 9148599187047371230, guid: 5e6fe4c989f824c4e9debdeee02d8777, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 3303600799332793270}
+    - targetCorrespondingSourceObject: {fileID: 9148599187047371230, guid: 5e6fe4c989f824c4e9debdeee02d8777, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 752528393496174573}
+    - targetCorrespondingSourceObject: {fileID: 9148599187047371230, guid: 5e6fe4c989f824c4e9debdeee02d8777, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 5906440577047008554}
+    - targetCorrespondingSourceObject: {fileID: 9148599187047371230, guid: 5e6fe4c989f824c4e9debdeee02d8777, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 5153380980217495768}
   m_SourcePrefab: {fileID: 100100000, guid: 5e6fe4c989f824c4e9debdeee02d8777, type: 3}
 --- !u!1 &1698638790444469707 stripped
 GameObject:
@@ -237,6 +249,88 @@ MonoBehaviour:
   swayRollDegrees: 1.8
   swayFrequency: 0.55
   neckShare: 0.35
+--- !u!114 &3303600799332793270
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1698638790444469707}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7b086d769726e0746b2c246c6214fbcc, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: DigitalHuman::DigitalHuman.Planning.MockTrajectoryPlanSource
+  controlHz: 10
+  horizonSteps: 30
+  cruiseSpeed: 1.4
+  acceleration: 1.8
+  deceleration: 2.2
+  obstacleClearance: 0.6
+  walkSpeedThreshold: 0.15
+  turnRateThreshold: 0.35
+--- !u!114 &752528393496174573
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1698638790444469707}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c5655b09a9eb2194fa2691e76570f08c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: DigitalHuman::DigitalHuman.Planning.TrajectoryPlanFollower
+  planSource: {fileID: 3303600799332793270}
+  intentAnimator: {fileID: 2509213621140019691}
+  navMeshMovement: {fileID: 3976955450808462016}
+  root: {fileID: 3347440554572554230}
+  replanInterval: 1
+  arrivalTolerance: 0.25
+  maxTurnDegreesPerSecond: 360
+  snapToNavMesh: 1
+--- !u!114 &5906440577047008554
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1698638790444469707}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7c43b74add6eb194196e79cd29ac2a67, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: DigitalHuman::DigitalHuman.Planning.TrajectoryDebugRenderer
+  follower: {fileID: 752528393496174573}
+  visible: 1
+  lineWidth: 0.04
+  groundOffset: 0.03
+  idleColor: {r: 0.6, g: 0.6, b: 0.6, a: 1}
+  walkColor: {r: 0.25, g: 0.85, b: 0.35, a: 1}
+  turnColor: {r: 0.25, g: 0.75, b: 0.95, a: 1}
+  stopColor: {r: 0.95, g: 0.8, b: 0.25, a: 1}
+  waveColor: {r: 0.9, g: 0.4, b: 0.85, a: 1}
+  obstacleColor: {r: 0.95, g: 0.3, b: 0.3, a: 1}
+--- !u!114 &5153380980217495768
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1698638790444469707}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 919064e617102294298c8f5eb2c564b2, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: DigitalHuman::DigitalHuman.Planning.IntentPlanBridge
+  dialogueController: {fileID: 5395362383377806623}
+  follower: {fileID: 752528393496174573}
+  approachTarget: {fileID: 0}
+  lookAtController: {fileID: 5308403169502065994}
+  stopDistance: 1.6
+  alreadyArrivedDistance: 2
+  pickupObstacleRadius: 0.45
+  obstacleSearchRadius: 12
 --- !u!114 &2509213621140019691 stripped
 MonoBehaviour:
   m_CorrespondingSourceObject: {fileID: 5455575459886122494, guid: 5e6fe4c989f824c4e9debdeee02d8777, type: 3}
@@ -253,6 +347,17 @@ Transform:
   m_CorrespondingSourceObject: {fileID: 5120843418805601251, guid: 5e6fe4c989f824c4e9debdeee02d8777, type: 3}
   m_PrefabInstance: {fileID: 7594366978144771093}
   m_PrefabAsset: {fileID: 0}
+--- !u!114 &3976955450808462016 stripped
+MonoBehaviour:
+  m_CorrespondingSourceObject: {fileID: 6797171463221376725, guid: 5e6fe4c989f824c4e9debdeee02d8777, type: 3}
+  m_PrefabInstance: {fileID: 7594366978144771093}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1698638790444469707}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 706d3f862fee8b24fa6c4438daaf2884, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::DigitalHuman.AgentMovement
 --- !u!114 &5308403169502065994 stripped
 MonoBehaviour:
   m_CorrespondingSourceObject: {fileID: 2364284290192959839, guid: 5e6fe4c989f824c4e9debdeee02d8777, type: 3}

@@ -13,8 +13,6 @@ namespace DigitalHuman
         [SerializeField] private string systemPrompt =
             "You are EVA, a friendly digital human. Reply clearly and concisely.";
         [SerializeField, Min(2)] private int maxHistoryMessages = 16;
-        [SerializeField] private string localFallbackTemplate =
-            "Local conversation mode: I heard you say, \"{0}\"";
         [SerializeField] private DigitalHumanPersona persona;
         [SerializeField] private MonoBehaviour responseProviderComponent;
         [SerializeField] private MonoBehaviour gameContextProviderComponent;
@@ -23,6 +21,7 @@ namespace DigitalHuman
             new List<ConversationMessage>();
         private IConversationBackend responseProvider;
         private IGameContextProvider gameContextProvider;
+        private bool offlineFallbackWarningLogged;
 
         public IReadOnlyList<ConversationMessage> ConversationHistory => conversationHistory;
         public string SystemPrompt => systemPrompt;
@@ -111,13 +110,12 @@ namespace DigitalHuman
                 {
                     await Task.Yield();
                     cancellationToken.ThrowIfCancellationRequested();
-                    response = string.Format(localFallbackTemplate, trimmedMessage);
+                    response = OfflineReplyHeuristic.BuildReply(trimmedMessage);
                 }
                 else
                 {
-                    response = await responseProvider.SendMessageAsync(
-                        requestMessages,
-                        cancellationToken);
+                    response = await SendWithOfflineFallbackAsync(
+                        requestMessages, trimmedMessage, cancellationToken);
                 }
 
                 cancellationToken.ThrowIfCancellationRequested();
@@ -141,6 +139,42 @@ namespace DigitalHuman
             {
                 conversationHistory.Remove(userMessage);
                 throw;
+            }
+        }
+
+        /// <summary>
+        /// Calls the backend, degrading to the offline heuristic if it is unreachable or
+        /// unconfigured. Without this, a missing API key leaves the character mute and
+        /// motionless, which makes the whole embodiment layer impossible to evaluate.
+        /// Cancellation is never swallowed: that is the player closing the dialogue.
+        /// </summary>
+        private async Task<string> SendWithOfflineFallbackAsync(
+            IReadOnlyList<ConversationMessage> requestMessages,
+            string playerMessage,
+            CancellationToken cancellationToken)
+        {
+            try
+            {
+                return await responseProvider.SendMessageAsync(requestMessages, cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception exception)
+            {
+                if (!offlineFallbackWarningLogged)
+                {
+                    offlineFallbackWarningLogged = true;
+                    Debug.LogWarning(
+                        "[DigitalHuman] Conversation backend unavailable, falling back to " +
+                        $"offline replies for the rest of this session: {exception.Message}",
+                        this);
+                }
+
+                await Task.Yield();
+                cancellationToken.ThrowIfCancellationRequested();
+                return OfflineReplyHeuristic.BuildReply(playerMessage);
             }
         }
 

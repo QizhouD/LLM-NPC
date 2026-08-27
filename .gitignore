@@ -138,4 +138,7 @@ AuthConfig.asset
 # -----------------------------------------------------------------------------
 # Local scratch (not part of the project)
 # -----------------------------------------------------------------------------
-/NewFile1.txt
+# Editor CLI transcripts land in the repo root as <task>-setup.log and
+# <task>-playmode.log. Covered by *.log above; listed here so the pattern is
+# not mistaken for build output and narrowed later.
+/NewFile*.txt

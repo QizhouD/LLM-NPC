@@ -1,6 +1,7 @@
 #if UNITY_EDITOR
 using System.Collections.Generic;
 using System.Text;
+using DigitalHuman.Planning;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -158,6 +159,58 @@ namespace DigitalHuman.Editor
             return report.ToString();
         }
 
+        /// <summary>
+        /// Adds the planning path alongside the NavMesh one. The mock source is the default
+        /// because every real planner export is currently a fallback; see the README.
+        /// </summary>
+        private static string WirePlanningStack(GameObject contents, MotionIntentAnimator intent)
+        {
+            StringBuilder report = new StringBuilder();
+
+            MockTrajectoryPlanSource mockSource = contents.GetComponent<MockTrajectoryPlanSource>();
+            if (mockSource == null)
+            {
+                mockSource = contents.AddComponent<MockTrajectoryPlanSource>();
+                report.Append("added MockTrajectoryPlanSource; ");
+            }
+
+            TrajectoryPlanFollower follower = contents.GetComponent<TrajectoryPlanFollower>();
+            if (follower == null)
+            {
+                follower = contents.AddComponent<TrajectoryPlanFollower>();
+                report.Append("added TrajectoryPlanFollower; ");
+            }
+
+            follower.Configure(mockSource, intent, contents.GetComponent<AgentMovement>());
+
+            TrajectoryDebugRenderer debugRenderer =
+                contents.GetComponent<TrajectoryDebugRenderer>();
+            if (debugRenderer == null)
+            {
+                debugRenderer = contents.AddComponent<TrajectoryDebugRenderer>();
+                report.Append("added TrajectoryDebugRenderer; ");
+            }
+
+            debugRenderer.Configure(follower);
+
+            IntentPlanBridge bridge = contents.GetComponent<IntentPlanBridge>();
+            if (bridge == null)
+            {
+                bridge = contents.AddComponent<IntentPlanBridge>();
+                report.Append("added IntentPlanBridge; ");
+            }
+
+            // The approach target is left null so the bridge follows the LookAtController's
+            // current target, which the interaction trigger sets to whoever walked up.
+            bridge.Configure(
+                contents.GetComponent<DialogueController>(),
+                follower,
+                contents.GetComponent<LookAtController>(),
+                null);
+
+            return report.ToString();
+        }
+
         private static string WireVexaPrefab()
         {
             GameObject contents = PrefabUtility.LoadPrefabContents(VexaPrefabPath);
@@ -255,6 +308,8 @@ namespace DigitalHuman.Editor
                 }
 
                 speechMotion.Configure(contents.GetComponentInChildren<AudioSource>(), visual);
+
+                report.Append(WirePlanningStack(contents, intent));
 
                 report.Append("ok");
 

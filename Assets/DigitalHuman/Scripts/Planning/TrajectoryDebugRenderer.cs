@@ -106,6 +106,25 @@ namespace DigitalHuman.Planning
             visible = value;
         }
 
+        /// <summary>Binds the follower to visualise. Used by the editor wiring tool.</summary>
+        public void Configure(TrajectoryPlanFollower target)
+        {
+            bool wasEnabled = isActiveAndEnabled;
+            if (wasEnabled && follower != null)
+            {
+                follower.PlanStarted -= HandlePlanStarted;
+                follower.FallbackPlanReceived -= HandleFallback;
+            }
+
+            follower = target;
+
+            if (wasEnabled && follower != null)
+            {
+                follower.PlanStarted += HandlePlanStarted;
+                follower.FallbackPlanReceived += HandleFallback;
+            }
+        }
+
         private void HandlePlanStarted(TrajectoryPlan plan)
         {
             renderedPlan = plan;
