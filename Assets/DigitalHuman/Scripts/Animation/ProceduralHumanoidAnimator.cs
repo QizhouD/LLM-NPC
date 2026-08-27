@@ -8,10 +8,16 @@ namespace DigitalHuman
     /// and layered on top of whatever clip the Animator is playing.
     /// </summary>
     /// <remarks>
-    /// Runs in <c>LateUpdate</c>, after the Animator has written its pose, and treats
-    /// the current local rotation as the base to add onto. That makes it composable
-    /// with real clips instead of replacing them. When no Animator drives the bones
-    /// the captured rest pose is used as the base so offsets cannot accumulate.
+    /// Runs in <c>LateUpdate</c>, after the Animator has written its pose, and adds onto
+    /// that pose rather than replacing it, so it composes with real clips.
+    ///
+    /// Reading the pose back is only safe if you can tell the Animator's value apart from
+    /// the value this component wrote last frame. A clip animates only the bones it has
+    /// curves for; for every other bone, and for this Animator's own transform, nothing
+    /// overwrites the value between frames. Naively treating the read-back as "the
+    /// Animator's pose" therefore folds the previous offset into the base and the bone
+    /// drifts by one offset per frame. That is why each channel remembers what it wrote
+    /// and only adopts a new base when the current value differs from it.
     /// </remarks>
     [DisallowMultipleComponent]
     [DefaultExecutionOrder(100)]
@@ -46,6 +52,22 @@ namespace DigitalHuman
         [SerializeField, Range(0f, 60f)] private float armSwingAmplitude = 24f;
         [Tooltip("Degrees of inward lean per rad/s of turn rate.")]
         [SerializeField, Range(0f, 30f)] private float turnLeanPerRadian = 6f;
+
+        private enum Joint
+        {
+            Torso = 0,
+            Head = 1,
+            LeftArm = 2,
+            RightArm = 3,
+            LeftLeg = 4,
+            RightLeg = 5,
+            Count = 6
+        }
+
+        private readonly AdditiveRotationChannel[] rotationChannels =
+            new AdditiveRotationChannel[(int)Joint.Count];
+
+        private AdditivePositionChannel rootChannel;
 
         private Vector3 rootRestPosition;
         private Quaternion torsoRest;
@@ -183,36 +205,36 @@ namespace DigitalHuman
 
             bool animatorDriven = IsAnimatorDriving();
 
-            ApplyPosition(
+            ApplyRootPosition(
                 characterRoot,
                 rootRestPosition,
                 animatorDriven,
                 Vector3.up * (breath + walkBounce + talkingBlend * 0.004f * talkPulse));
 
-            ApplyRotation(torso, torsoRest, animatorDriven, new Vector3(
+            ApplyRotation(Joint.Torso, torso, torsoRest, animatorDriven, new Vector3(
                 breath * 85f + talkingBlend * talkSecondary * 1.8f,
                 idleSway + talkingBlend * talkPulse * 2.2f,
                 talkingBlend * talkSecondary * 1.2f - walkSwing * 1.5f - turnLean * 0.6f));
 
-            ApplyRotation(head, headRest, animatorDriven, new Vector3(
+            ApplyRotation(Joint.Head, head, headRest, animatorDriven, new Vector3(
                 Mathf.Sin(idlePhase * 0.65f) * 0.8f + talkingBlend * talkPulse * 4.5f,
                 Mathf.Sin(idlePhase * 0.37f) * 1.2f + talkingBlend * talkSecondary * 3f,
                 talkingBlend * talkSecondary * 1.5f - turnLean * 0.3f));
 
-            ApplyRotation(leftUpperArm, leftArmRest, animatorDriven, new Vector3(
+            ApplyRotation(Joint.LeftArm, leftUpperArm, leftArmRest, animatorDriven, new Vector3(
                 talkingBlend * (10f + talkPulse * 13f) - walkSwing * armSwingAmplitude,
                 talkingBlend * -4f,
                 talkingBlend * (-12f + talkSecondary * 5f)));
 
-            ApplyRotation(rightUpperArm, rightArmRest, animatorDriven, new Vector3(
+            ApplyRotation(Joint.RightArm, rightUpperArm, rightArmRest, animatorDriven, new Vector3(
                 talkingBlend * (-4f + talkSecondary * 11f) + walkSwing * armSwingAmplitude,
                 talkingBlend * 4f,
                 talkingBlend * (12f - talkPulse * 5f)));
 
-            ApplyRotation(leftUpperLeg, leftLegRest, animatorDriven, new Vector3(
+            ApplyRotation(Joint.LeftLeg, leftUpperLeg, leftLegRest, animatorDriven, new Vector3(
                 walkSwing * strideAmplitude, 0f, 0f));
 
-            ApplyRotation(rightUpperLeg, rightLegRest, animatorDriven, new Vector3(
+            ApplyRotation(Joint.RightLeg, rightUpperLeg, rightLegRest, animatorDriven, new Vector3(
                 -walkSwing * strideAmplitude, 0f, 0f));
 
             MotionMagnitude = Mathf.Abs(breath * 85f) + Mathf.Abs(idleSway) +
@@ -253,7 +275,8 @@ namespace DigitalHuman
                    animator.runtimeAnimatorController != null;
         }
 
-        private static void ApplyRotation(
+        private void ApplyRotation(
+            Joint joint,
             Transform bone,
             Quaternion restRotation,
             bool animatorDriven,
@@ -264,11 +287,14 @@ namespace DigitalHuman
                 return;
             }
 
-            Quaternion baseRotation = animatorDriven ? bone.localRotation : restRotation;
-            bone.localRotation = baseRotation * Quaternion.Euler(eulerOffset);
+            ref AdditiveRotationChannel channel = ref rotationChannels[(int)joint];
+            Quaternion offset = Quaternion.Euler(eulerOffset);
+            bone.localRotation = animatorDriven
+                ? channel.Apply(bone.localRotation, offset)
+                : channel.ApplyToBase(restRotation, offset);
         }
 
-        private static void ApplyPosition(
+        private void ApplyRootPosition(
             Transform bone,
             Vector3 restPosition,
             bool animatorDriven,
@@ -279,8 +305,19 @@ namespace DigitalHuman
                 return;
             }
 
-            Vector3 basePosition = animatorDriven ? bone.localPosition : restPosition;
-            bone.localPosition = basePosition + offset;
+            bone.localPosition = animatorDriven
+                ? rootChannel.Apply(bone.localPosition, offset)
+                : rootChannel.ApplyToBase(restPosition, offset);
+        }
+
+        private void ResetChannels()
+        {
+            for (int i = 0; i < rotationChannels.Length; i++)
+            {
+                rotationChannels[i].Reset();
+            }
+
+            rootChannel.Reset();
         }
 
         private void HandleStateChanged(DigitalHumanState _, DigitalHumanState nextState)
@@ -347,6 +384,7 @@ namespace DigitalHuman
             leftLegRest = leftUpperLeg != null ? leftUpperLeg.localRotation : Quaternion.identity;
             rightLegRest = rightUpperLeg != null ? rightUpperLeg.localRotation : Quaternion.identity;
             restPoseCaptured = true;
+            ResetChannels();
         }
 
         private void RestoreRestPose()
@@ -370,6 +408,8 @@ namespace DigitalHuman
             {
                 rightUpperLeg.localRotation = rightLegRest;
             }
+
+            ResetChannels();
         }
 
         private void OnValidate()

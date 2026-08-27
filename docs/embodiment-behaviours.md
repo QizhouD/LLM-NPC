@@ -15,10 +15,26 @@ Three components write to the same skeleton every frame, in this order:
 | 200 | `ProceduralFaceController` | eyeballs, eyebrows, eyelashes, head and neck gaze |
 | 300 | `SpeechHeadMotion` | head and neck, driven by voice loudness |
 
-All three procedural components run in `LateUpdate` and read the current local
-rotation as their base, so each one adds to the result of the previous stage
-instead of replacing it. The order is pinned with `[DefaultExecutionOrder]`
-rather than left to Unity's arbitrary component ordering.
+All three procedural components run in `LateUpdate` and add to the result of the
+previous stage instead of replacing it. The order is pinned with
+`[DefaultExecutionOrder]` rather than left to Unity's arbitrary component
+ordering.
+
+### Why the additive layers go through `AdditiveChannel`
+
+Reading a bone, adding an offset and writing it back is only stable while
+something else rewrites that bone every frame. An Animator writes only the bones
+the current clip has curves for, and never its own transform. For every other
+bone the read-back **is last frame's output**, so treating it as the base folds
+the previous offset in and the bone gains one offset per frame.
+
+This shipped as a bug: the walk bounce is a non-negative offset on the visual
+root, so it accumulated and lifted the character off the floor while walking,
+which also made the only visible motion vertical. `AdditiveRotationChannel` and
+`AdditivePositionChannel` close the hole by remembering what they wrote and
+adopting a new base only when the current value differs from it.
+`AdditiveChannelTests` pins the invariant: a constant offset held for 600 frames
+must still measure as one offset.
 
 ## Locomotion
 
@@ -32,6 +48,18 @@ The Vexa package ships no walk or run clip, so the stride is synthesised.
 - Turn rate produces an inward torso and head lean. Leaning into a turn is what
   keeps the centre of mass over the support foot; without it a turning character
   reads as sliding.
+- Three speeds have to agree or the feet skate: the stride's `referenceSpeed`,
+  the mock planner's `cruiseSpeed`, and the `NavMeshAgent.speed`. All are 1.4 m/s.
+  The agent's Unity default is 2.6 m/s, which is a jog, and pairing it with a
+  walk-frequency stride is what makes a character look like it has no walk
+  animation at all.
+
+The character can be driven along either of two paths, and both have to feed the
+Animator. `TrajectoryPlanFollower` calls `SetMotion` while following a plan;
+otherwise `MotionIntentAnimator` falls back to the `NavMeshAgent`'s own velocity
+after `plannerSampleTimeout`. Without that fallback the `Speed` parameter sits at
+zero for the whole NavMesh path, which leaves the blend tree and the stride in
+idle while the body slides across the floor.
 
 This is a placeholder for real locomotion clips, not a research contribution. The
 blend tree already has a `walk` slot wired for an imported clip; see

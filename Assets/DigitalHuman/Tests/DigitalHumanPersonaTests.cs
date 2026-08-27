@@ -118,5 +118,21 @@ namespace DigitalHuman.Tests
             Assert.That(parsed.HasEmotion, Is.True);
             Assert.That(parsed.Text, Is.EqualTo("Of course, follow me."));
         }
+
+        /// <summary>
+        /// The prose is spoken aloud and the tags already move the body, so narrated actions
+        /// like "*walks over, smiling*" are both redundant and unspeakable. Observed coming
+        /// back from a live model, hence the explicit instruction and this guard.
+        /// </summary>
+        [Test]
+        public void BuildSystemPrompt_ForbidsNarratedActions()
+        {
+            string prompt = persona.BuildSystemPrompt();
+
+            Assert.That(prompt, Does.Contain("never narrate your own actions"));
+            Assert.That(prompt, Does.Contain("asterisks"));
+            Assert.That(prompt, Does.Contain("Wrong:"));
+            Assert.That(prompt, Does.Contain("Right:"));
+        }
     }
 }

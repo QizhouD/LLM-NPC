@@ -2410,6 +2410,7 @@ GameObject:
   - component: {fileID: 2453528428527575590}
   - component: {fileID: 4694753889243616998}
   - component: {fileID: 5455575459886122494}
+  - component: {fileID: 1907729623715513890}
   m_Layer: 0
   m_Name: DigitalHuman
   m_TagString: Untagged
@@ -2682,9 +2683,10 @@ MonoBehaviour:
 
     Keep responses concise and conversational.'
   maxHistoryMessages: 16
-  localFallbackTemplate: 'Local conversation mode: I heard you say, "{0}"'
   persona: {fileID: 11400000, guid: e7d89a10ee1aa204bb4f9131d2aacadc, type: 2}
+  provider: 0
   responseProviderComponent: {fileID: 4403981640696639702}
+  deepSeekProviderComponent: {fileID: 1907729623715513890}
   gameContextProviderComponent: {fileID: 8903593497861981371}
 --- !u!114 &4403981640696639702
 MonoBehaviour:
@@ -2873,3 +2875,23 @@ MonoBehaviour:
   animator: {fileID: 875840336794832990}
   parameterDamping: 0.12
   stateController: {fileID: 29719062563529239}
+  movement: {fileID: 0}
+  plannerSampleTimeout: 0.35
+--- !u!114 &1907729623715513890
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 9148599187047371230}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a68da2b992f873641bc62122eada9904, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: DigitalHuman::DigitalHuman.DeepSeekLlmService
+  endpoint: https://api.deepseek.com/chat/completions
+  model: deepseek-chat
+  apiKeyEnvironmentVariable: DEEPSEEK_API_KEY
+  timeoutSeconds: 30
+  maxTokens: 160
+  temperature: 1

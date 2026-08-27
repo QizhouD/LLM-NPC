@@ -1,4 +1,4 @@
-# Unity Digital Human ??the embodiment layer
+# Unity Digital Human: the embodiment layer
 
 An NPC you talk to in natural language, whose body does what the conversation
 implies. A language model answers in prose and appends two bounded tags; the tags
@@ -6,12 +6,12 @@ become a trajectory-planner goal and a facial state; the planner's output drives
 the root transform at 10 Hz.
 
 <!-- GIF goes here: shots 4-6 of docs/demo-recording.md, 800px, under 5 MB. -->
-*Demo recording pending ? the shot list and capture settings are in
+*Demo recording pending. The shot list and capture settings are in
 [docs/demo-recording.md](docs/demo-recording.md).*
 
 This repository is the **embodiment layer** for the research in
 [language-conditioned generative trajectory planning](https://github.com/QizhouD/language-conditioned-generative-trajectory-planning-for-real-time-digital-humans)
-(GTP). That repository is the research contribution ??a conditional flow model
+(GTP). That repository is the research contribution: a conditional flow model
 that generates navigation trajectories under hard constraints. This one is how it
 becomes a body you can look at.
 
@@ -26,7 +26,7 @@ becomes a body you can look at.
 
 ```mermaid
 graph LR
-  Player["Player utterance"] --> LLM["OpenAILLMService<br/>Responses API"]
+  Player["Player utterance"] --> LLM["OpenAILLMService or<br/>DeepSeekLlmService"]
   LLM --> Parser["ResponseAnnotationParser<br/>[intent:x][emotion:y]"]
   Parser --> Bridge["IntentPlanBridge"]
   Parser --> Face["ProceduralFaceController<br/>brows, lids, gaze"]
@@ -80,7 +80,7 @@ Control rate is 10 Hz and the horizon is 30 steps, so a plan covers 3 seconds an
 is replanned every second while walking.
 
 `fallback: true` means the planner rejected every candidate. The follower then
-**holds idle** rather than interpolating a rejected path ??standing still is the
+**holds idle** rather than interpolating a rejected path. Standing still is the
 honest response to "no feasible plan", and it makes the failure visible instead of
 hiding it.
 
@@ -104,8 +104,8 @@ displayed or spoken, and degrades anything outside the vocabulary to
 the enums themselves, so the prompt and the parser cannot drift apart; a test
 asserts that the prompt's own example parses.
 
-Emotion has five values ??`neutral`, `curious`, `happy`, `concerned`,
-`surprised` ??because eyebrows and eyelids are the entire available expressive
+Emotion has five values (`neutral`, `curious`, `happy`, `concerned`,
+`surprised`) because eyebrows and eyelids are the entire available expressive
 channel. See below.
 
 ## What this character cannot do
@@ -148,14 +148,14 @@ Task<TrajectoryPlan> RequestPlanAsync(PlanRequest request, CancellationToken tok
 
 The mock is the default for one reason: it produces a plan worth watching, and
 the trained checkpoint currently does not. Its tests assert the properties a real
-planner must also satisfy ??monotonic timestamps at the control rate, progress
+planner must also satisfy: monotonic timestamps at the control rate, progress
 towards the goal, obstacle clearance, speed within the kinematic budget, and
-segments tiling the horizon without gaps ??so it is a contract fixture, not just
-a stand-in.
+segments tiling the horizon without gaps. That makes it a contract fixture, not
+just a stand-in.
 
 ## Running it
 
-Requires Unity **6000.2.15f1** (exactly ??see `ProjectSettings/ProjectVersion.txt`)
+Requires Unity **6000.2.15f1** (exactly; see `ProjectSettings/ProjectVersion.txt`)
 and Git LFS.
 
 ```bash
@@ -172,22 +172,39 @@ Open `Assets/Scenes/SampleScene.unity` and press Play. WASD to walk up to Vexa,
 
 **No API key is needed to evaluate the embodiment layer.** Without one the
 conversation degrades to `OfflineReplyHeuristic`, a keyword table that emits the
-same bounded tags the model is asked for, so the entire downstream chain ??parser,
-plan bridge, planner, animator, face ??runs identically. Its replies are prefixed
+same bounded tags the model is asked for, so the entire downstream chain (parser,
+plan bridge, planner, animator, face) runs identically. Its replies are prefixed
 `[offline mode]` so they cannot be mistaken for model output. `MockVoiceService`
 similarly produces silent clips of the right length, which still drives the
 speaking state and its blink-rate change.
 
-For real dialogue and speech, set the key in the environment before launching the
-Editor. It is read from the environment at call time and never stored in the
-project:
+### Choosing a chat backend
+
+The chat backend is interchangeable. On the `Vexa` object, `AIConversationManager`
+has a **Provider** dropdown:
+
+| Provider | Component | Env var | API |
+| --- | --- | --- | --- |
+| `OpenAI` | `OpenAILLMService` | `OPENAI_API_KEY` | Responses API |
+| `DeepSeek` | `DeepSeekLlmService` | `DEEPSEEK_API_KEY` | Chat Completions, `deepseek-chat` |
+| `Offline` | none | none | `OfflineReplyHeuristic` |
+
+`OpenAI` is the default. Both backends are already wired into their slots, so
+switching is just the dropdown; nothing downstream of the parser knows or cares
+which one answered. If the selected provider's key is missing, that turn falls
+through to the same `[offline mode]` heuristic rather than failing.
+
+Keys are read from the environment at call time and never stored in the project:
 
 ```powershell
 $env:OPENAI_API_KEY = 'sk-...'
+$env:DEEPSEEK_API_KEY = 'sk-...'
 ```
 
-Then on the `Vexa` object, point `VoiceController`'s service field at
-`OpenAITtsVoiceService` instead of `MockVoiceService`.
+Speech is OpenAI-only, because DeepSeek publishes no equivalent of
+`/v1/audio/speech`. For spoken replies, point `VoiceController`'s service field at
+`OpenAITtsVoiceService` instead of `MockVoiceService`; this is independent of the
+chat provider, so DeepSeek chat with OpenAI speech is a valid combination.
 
 ## Layout
 
@@ -199,7 +216,7 @@ Then on the `Vexa` object, point `VoiceController`'s service field at
 | `Assets/DigitalHuman/Scripts/Interaction/` | NavMesh movement, pickup, look-at |
 | `Assets/DigitalHuman/Scripts/Voice/` | TTS, playback, speech-driven head motion |
 | `Assets/DigitalHuman/Scripts/Editor/` | Three tools: rig setup, animator controller builder, scene wiring |
-| `Assets/DigitalHuman/Tests/` | 96 EditMode tests |
+| `Assets/DigitalHuman/Tests/` | 127 EditMode tests |
 | `docs/` | Why the behaviours are what they are; rig constraints |
 | `Tools/LegacyEditorBootstrap/` | One-off scripts that built the scene, kept as a record, outside `Assets/` so Unity ignores them |
 
@@ -211,11 +228,12 @@ hand-clicked step, so the setup is reproducible:
 
 ## Tests
 
-96 EditMode tests, no play mode or scene fixtures required. They cover the
-seams where a silent failure would be expensive: the Responses API request and
-response shapes, the system prompt, `TrajectoryPlan` parsing and interpolation
-including yaw wrap-around, intent index mapping, PCM decoding, and the annotation
-parser's degradation on hostile input.
+127 EditMode tests, no play mode or scene fixtures required. They cover the
+seams where a silent failure would be expensive: both backends' request and
+response shapes, provider selection and its keyless fallback, the system prompt,
+`TrajectoryPlan` parsing and interpolation including yaw wrap-around, intent
+index mapping, PCM decoding, the additive animation layer's no-accumulation
+guarantee, and the annotation parser's degradation on hostile input.
 
 ```bash
 unity command run_tests

@@ -55,6 +55,9 @@ namespace DigitalHuman
         /// <summary>Smoothed loudness in 0-1. Useful for a gesture layer weight.</summary>
         public float Envelope => envelope;
 
+        private AdditiveRotationChannel headChannel;
+        private AdditiveRotationChannel neckChannel;
+
         private void Awake()
         {
             noiseSeed = Random.value * 100f;
@@ -67,6 +70,8 @@ namespace DigitalHuman
             skeletonRoot = root;
             head = null;
             neck = null;
+            headChannel.Reset();
+            neckChannel.Reset();
             ResolveBones();
         }
 
@@ -89,11 +94,25 @@ namespace DigitalHuman
             float roll = (Mathf.PerlinNoise(noiseSeed + 13.7f, phase) - 0.5f) * 2f * swayRollDegrees;
             Vector3 offset = new Vector3(nodDegrees, yaw, roll) * envelope;
 
-            head.localRotation *= Quaternion.Euler(offset);
+            ApplyAdditive(ref headChannel, head, offset);
             if (neck != null && neckShare > 0f)
             {
-                neck.localRotation *= Quaternion.Euler(offset * neckShare);
+                ApplyAdditive(ref neckChannel, neck, offset * neckShare);
             }
+        }
+
+        /// <summary>
+        /// Adds <paramref name="eulerOffset"/> onto whatever pose the layers below wrote.
+        /// A plain <c>localRotation *= offset</c> here would compound for as long as the
+        /// character keeps talking on a clip that has no curve for the head.
+        /// </summary>
+        private static void ApplyAdditive(
+            ref AdditiveRotationChannel channel,
+            Transform bone,
+            Vector3 eulerOffset)
+        {
+            bone.localRotation =
+                channel.Apply(bone.localRotation, Quaternion.Euler(eulerOffset));
         }
 
         private float SampleLoudness()

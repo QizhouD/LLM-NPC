@@ -294,6 +294,14 @@ PrefabInstance:
       propertyPath: m_Name
       value: Vexa
       objectReference: {fileID: 0}
+    - target: {fileID: 1785173655984497070, guid: ea8cd8dd18a61954d84c048b095eb1da, type: 3}
+      propertyPath: provider
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 2154857547076825751, guid: ea8cd8dd18a61954d84c048b095eb1da, type: 3}
+      propertyPath: m_Speed
+      value: 1.4
+      objectReference: {fileID: 0}
     - target: {fileID: 3347440554572554230, guid: ea8cd8dd18a61954d84c048b095eb1da, type: 3}
       propertyPath: m_LocalPosition.x
       value: -4

@@ -1,5 +1,6 @@
 using System;
 using UnityEngine;
+using UnityEngine.AI;
 
 namespace DigitalHuman
 {
@@ -16,6 +17,8 @@ namespace DigitalHuman
         public const string WaveParameter = "Wave";
         public const string TalkingParameter = "IsTalking";
 
+        private const float AgentMovingThreshold = 0.05f;
+
         private static readonly int SpeedHash = Animator.StringToHash(SpeedParameter);
         private static readonly int TurnRateHash = Animator.StringToHash(TurnRateParameter);
         private static readonly int MotionIntentHash = Animator.StringToHash(MotionIntentParameter);
@@ -26,11 +29,18 @@ namespace DigitalHuman
         [Tooltip("Seconds used to smooth Speed and TurnRate towards their targets.")]
         [SerializeField, Min(0f)] private float parameterDamping = 0.12f;
         [SerializeField] private DigitalHumanController stateController;
+        [Tooltip("Supplies Speed and TurnRate whenever the planner is not driving.")]
+        [SerializeField] private AgentMovement movement;
+        [Tooltip("Seconds after the last planner sample before reading the NavMeshAgent instead.")]
+        [SerializeField, Min(0.05f)] private float plannerSampleTimeout = 0.35f;
 
         private float speed;
         private float turnRate;
         private float targetSpeed;
         private float targetTurnRate;
+        private float lastPlannerSampleTime = float.NegativeInfinity;
+        private float previousYawDegrees;
+        private bool previousYawValid;
 
         public MotionIntent CurrentIntent { get; private set; } = MotionIntent.Idle;
         public float Speed => speed;
@@ -44,6 +54,11 @@ namespace DigitalHuman
             if (animator == null)
             {
                 animator = GetComponentInChildren<Animator>();
+            }
+
+            if (movement == null)
+            {
+                movement = GetComponent<AgentMovement>();
             }
         }
 
@@ -90,6 +105,7 @@ namespace DigitalHuman
         {
             targetSpeed = Mathf.Max(0f, rootSpeed);
             targetTurnRate = rootTurnRate;
+            lastPlannerSampleTime = Time.time;
             SetIntent(intent);
         }
 
@@ -128,6 +144,11 @@ namespace DigitalHuman
 
         private void Update()
         {
+            if (Time.time - lastPlannerSampleTime > plannerSampleTimeout)
+            {
+                ReadKinematicsFromAgent();
+            }
+
             if (parameterDamping <= 0f)
             {
                 speed = targetSpeed;
@@ -142,6 +163,57 @@ namespace DigitalHuman
 
             SetFloat(SpeedHash, speed);
             SetFloat(TurnRateHash, turnRate);
+        }
+
+        /// <summary>
+        /// Derives the root kinematics from the NavMeshAgent while no plan is being followed.
+        /// The character can walk by either route, and without this the Animator's Speed sits
+        /// at zero for the whole NavMesh path, which leaves both the locomotion blend and the
+        /// procedural stride stuck in idle while the body slides across the floor.
+        /// </summary>
+        private void ReadKinematicsFromAgent()
+        {
+            if (movement == null)
+            {
+                movement = GetComponent<AgentMovement>();
+            }
+
+            NavMeshAgent agent = movement != null ? movement.NavMeshAgent : null;
+            if (agent == null || !agent.enabled || !agent.isOnNavMesh)
+            {
+                targetSpeed = 0f;
+                targetTurnRate = 0f;
+                previousYawValid = false;
+                return;
+            }
+
+            targetSpeed = agent.velocity.magnitude;
+
+            float yawDegrees = transform.eulerAngles.y;
+            if (previousYawValid && Time.deltaTime > 0f)
+            {
+                float deltaDegrees = Mathf.DeltaAngle(previousYawDegrees, yawDegrees);
+                targetTurnRate = deltaDegrees * Mathf.Deg2Rad / Time.deltaTime;
+            }
+            else
+            {
+                targetTurnRate = 0f;
+            }
+
+            previousYawDegrees = yawDegrees;
+            previousYawValid = true;
+
+            // Keep the reported intent honest about a body that is travelling, but only
+            // promote and demote Idle so a gesture the dialogue layer asked for, such as a
+            // wave, is not cancelled by the fact that the agent happens to be walking.
+            if (targetSpeed > AgentMovingThreshold && CurrentIntent == MotionIntent.Idle)
+            {
+                SetIntent(MotionIntent.Walk);
+            }
+            else if (targetSpeed <= AgentMovingThreshold && CurrentIntent == MotionIntent.Walk)
+            {
+                SetIntent(MotionIntent.Idle);
+            }
         }
 
         private void HandleDialogueStateChanged(DigitalHumanState _, DigitalHumanState next)
@@ -196,6 +268,7 @@ namespace DigitalHuman
         private void OnValidate()
         {
             parameterDamping = Mathf.Max(0f, parameterDamping);
+            plannerSampleTimeout = Mathf.Max(0.05f, plannerSampleTimeout);
         }
     }
 }

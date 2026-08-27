@@ -12,7 +12,7 @@ namespace DigitalHuman
     {
         private const string DefaultEndpoint = "https://api.openai.com/v1/responses";
         private const string DefaultModel = "gpt-5.6-terra";
-        private const string DefaultApiKeyEnvironmentVariable = "OPENAI_API_KEY";
+        public const string DefaultApiKeyEnvironmentVariable = "OPENAI_API_KEY";
 
         [SerializeField] private string endpoint = DefaultEndpoint;
         [SerializeField] private string model = DefaultModel;

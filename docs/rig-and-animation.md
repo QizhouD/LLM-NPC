@@ -15,6 +15,7 @@ records why, and what to do if you want Humanoid retargeting later.
 | Blend shapes | **none** (`m_BlendShapeWeights: []`) |
 | Jaw bone | **none** |
 | Face bones | `L/REyeBall`, `L/REyeBrow`, `L/RUpperLash`, `L/RLowLash` |
+| Wrist bones | `Base HumanL/RPalm`; fingers are `Base HumanL/RDigitNN` |
 
 Two consequences drive the whole animation design:
 
@@ -27,6 +28,20 @@ Two consequences drive the whole animation design:
 Because the face bones are outside any `Animator` clip, they are free for
 `ProceduralFaceController` to drive directly. Keeping the rig Generic preserves
 that freedom.
+
+### Nothing in this armature is called "Hand"
+
+The wrist is `Base HumanRPalm` and the fingers are `Base HumanRDigitNN`, so a
+bone search for `Hand` returns nothing on Vexa. The prefab still carries the
+older placeholder model under `Vexa/Model/DigitalHuman_3D`, whose rig *does* use
+`RightHand`, and `AgentInteraction.rightHand` was left pointing at it. A
+picked-up item therefore parented to a skeleton nothing animates and hung in
+mid-air while the visible arm swung past it.
+
+`DigitalHumanSceneTool.WireHeldItemHandInScene` now resolves the wrist against a
+list of spellings (`RPalm`, `RightHand`, `RHand`, ...) and searches only under
+the transform that owns the *enabled* Animator, so it cannot pick the dead rig.
+If you swap the character, check that list first.
 
 ## Humanoid conversion: what happened when we tried
 

@@ -52,6 +52,10 @@ PrefabInstance:
       propertyPath: rightUpperLeg
       value: 
       objectReference: {fileID: 7849493387278625634}
+    - target: {fileID: 2453528428527575590, guid: 5e6fe4c989f824c4e9debdeee02d8777, type: 3}
+      propertyPath: rightHand
+      value: 
+      objectReference: {fileID: 4954399827718316573}
     - target: {fileID: 5120843418805601251, guid: 5e6fe4c989f824c4e9debdeee02d8777, type: 3}
       propertyPath: m_LocalPosition.x
       value: 0
@@ -96,6 +100,10 @@ PrefabInstance:
       propertyPath: animator
       value: 
       objectReference: {fileID: 661554521172795793}
+    - target: {fileID: 8188293426598510011, guid: 5e6fe4c989f824c4e9debdeee02d8777, type: 3}
+      propertyPath: deepSeekProviderComponent
+      value: 
+      objectReference: {fileID: 765901585155586372}
     - target: {fileID: 9148599187047371230, guid: 5e6fe4c989f824c4e9debdeee02d8777, type: 3}
       propertyPath: m_Name
       value: Vexa
@@ -147,6 +155,9 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 9148599187047371230, guid: 5e6fe4c989f824c4e9debdeee02d8777, type: 3}
       insertIndex: -1
       addedObject: {fileID: 5153380980217495768}
+    - targetCorrespondingSourceObject: {fileID: 9148599187047371230, guid: 5e6fe4c989f824c4e9debdeee02d8777, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 765901585155586372}
   m_SourcePrefab: {fileID: 100100000, guid: 5e6fe4c989f824c4e9debdeee02d8777, type: 3}
 --- !u!1 &1698638790444469707 stripped
 GameObject:
@@ -331,6 +342,24 @@ MonoBehaviour:
   alreadyArrivedDistance: 2
   pickupObstacleRadius: 0.45
   obstacleSearchRadius: 12
+--- !u!114 &765901585155586372
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1698638790444469707}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a68da2b992f873641bc62122eada9904, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: DigitalHuman::DigitalHuman.DeepSeekLlmService
+  endpoint: https://api.deepseek.com/chat/completions
+  model: deepseek-chat
+  apiKeyEnvironmentVariable: DEEPSEEK_API_KEY
+  timeoutSeconds: 30
+  maxTokens: 160
+  temperature: 1
 --- !u!114 &2509213621140019691 stripped
 MonoBehaviour:
   m_CorrespondingSourceObject: {fileID: 5455575459886122494, guid: 5e6fe4c989f824c4e9debdeee02d8777, type: 3}
@@ -542,6 +571,11 @@ Transform:
 --- !u!4 &3771516601292289512 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 4765354995076628109, guid: af66125fc77de28428e08afd4fd94286, type: 3}
+  m_PrefabInstance: {fileID: 8536273216559057765}
+  m_PrefabAsset: {fileID: 0}
+--- !u!4 &4954399827718316573 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 3654529430879414648, guid: af66125fc77de28428e08afd4fd94286, type: 3}
   m_PrefabInstance: {fileID: 8536273216559057765}
   m_PrefabAsset: {fileID: 0}
 --- !u!4 &6319827159802995723 stripped

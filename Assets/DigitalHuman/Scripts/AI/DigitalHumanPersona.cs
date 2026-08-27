@@ -121,7 +121,17 @@ namespace DigitalHuman
                 .AppendLine("Example: Of course, follow me. [intent:walk][emotion:curious]")
                 .AppendLine("Use exactly those spellings and nothing outside those lists.")
                 .AppendLine("Put the tags last, after all prose, on the same line.")
-                .AppendLine("Never mention or explain the tags; they are stripped before display.");
+                .AppendLine("Never mention or explain the tags; they are stripped before display.")
+                .AppendLine()
+                .AppendLine(
+                    "The tags move your real body in the world. The prose is only the words " +
+                    "you say out loud, and it is also what gets spoken aloud.")
+                .AppendLine(
+                    "So never narrate your own actions. No stage directions, no asterisks, " +
+                    "no describing yourself in the third person. The player can already see " +
+                    "you move.")
+                .AppendLine("Wrong: *walks over, smiling* Hi there. [intent:walk][emotion:happy]")
+                .AppendLine("Right: Hi there. [intent:walk][emotion:happy]");
         }
 
         private static string Normalize(string value, string fallback)
