@@ -2401,7 +2401,6 @@ GameObject:
   - component: {fileID: 29719062563529239}
   - component: {fileID: 8188293426598510011}
   - component: {fileID: 4403981640696639702}
-  - component: {fileID: 8006574960726234620}
   - component: {fileID: 6693373665800306344}
   - component: {fileID: 6155765861550568203}
   - component: {fileID: 8903593497861981371}
@@ -2410,6 +2409,7 @@ GameObject:
   - component: {fileID: 6797171463221376725}
   - component: {fileID: 2453528428527575590}
   - component: {fileID: 4694753889243616998}
+  - component: {fileID: 5455575459886122494}
   m_Layer: 0
   m_Name: DigitalHuman
   m_TagString: Untagged
@@ -2704,20 +2704,6 @@ MonoBehaviour:
   timeoutSeconds: 30
   maxOutputTokens: 160
   reasoningEffort: low
---- !u!114 &8006574960726234620
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 9148599187047371230}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 4702258be40b1e742bfde8882cfb3977, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::DigitalHuman.DigitalHumanAnimator
-  stateController: {fileID: 29719062563529239}
-  animator: {fileID: 875840336794832990}
 --- !u!114 &6693373665800306344
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -2780,6 +2766,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::DigitalHuman.ProceduralHumanoidAnimator
   stateController: {fileID: 29719062563529239}
   movement: {fileID: 6797171463221376725}
+  intentAnimator: {fileID: 5455575459886122494}
+  animator: {fileID: 875840336794832990}
   characterRoot: {fileID: 6338288913817112268}
   torso: {fileID: 1950341445460961346}
   head: {fileID: 4240079688196299012}
@@ -2791,6 +2779,10 @@ MonoBehaviour:
   idleFrequency: 1.25
   talkingFrequency: 4.5
   walkingFrequency: 2.4
+  referenceSpeed: 1.4
+  strideAmplitude: 27
+  armSwingAmplitude: 24
+  turnLeanPerRadian: 6
 --- !u!195 &8395566233588854402
 NavMeshAgent:
   m_ObjectHideFlags: 0
@@ -2845,6 +2837,7 @@ MonoBehaviour:
   rightHand: {fileID: 5366963354648894178}
   interactionDistance: 0.78
   faceTurnSpeed: 540
+  dropDistance: 0.8
   heldLocalPosition: {x: 0, y: -0.1, z: 0.18}
   heldLocalEulerAngles: {x: 0, y: 20, z: 0}
   heldLocalScale: {x: 0.28, y: 0.28, z: 0.28}
@@ -2865,3 +2858,18 @@ MonoBehaviour:
   interaction: {fileID: 2453528428527575590}
   commandTimeout: 18
   acknowledgementDelay: 0.2
+--- !u!114 &5455575459886122494
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 9148599187047371230}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 70ed4f0d4ea5bfb46b4099200f647a5a, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::DigitalHuman.MotionIntentAnimator
+  animator: {fileID: 875840336794832990}
+  parameterDamping: 0.12
+  stateController: {fileID: 29719062563529239}

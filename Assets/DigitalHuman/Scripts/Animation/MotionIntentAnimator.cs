@@ -1,0 +1,201 @@
+using System;
+using UnityEngine;
+
+namespace DigitalHuman
+{
+    /// <summary>
+    /// Single owner of the Animator parameters. Everything upstream speaks in planner
+    /// terms (intent plus root kinematics) and never touches the Animator directly.
+    /// </summary>
+    [DisallowMultipleComponent]
+    public sealed class MotionIntentAnimator : MonoBehaviour
+    {
+        public const string SpeedParameter = "Speed";
+        public const string TurnRateParameter = "TurnRate";
+        public const string MotionIntentParameter = "MotionIntent";
+        public const string WaveParameter = "Wave";
+        public const string TalkingParameter = "IsTalking";
+
+        private static readonly int SpeedHash = Animator.StringToHash(SpeedParameter);
+        private static readonly int TurnRateHash = Animator.StringToHash(TurnRateParameter);
+        private static readonly int MotionIntentHash = Animator.StringToHash(MotionIntentParameter);
+        private static readonly int WaveHash = Animator.StringToHash(WaveParameter);
+        private static readonly int TalkingHash = Animator.StringToHash(TalkingParameter);
+
+        [SerializeField] private Animator animator;
+        [Tooltip("Seconds used to smooth Speed and TurnRate towards their targets.")]
+        [SerializeField, Min(0f)] private float parameterDamping = 0.12f;
+        [SerializeField] private DigitalHumanController stateController;
+
+        private float speed;
+        private float turnRate;
+        private float targetSpeed;
+        private float targetTurnRate;
+
+        public MotionIntent CurrentIntent { get; private set; } = MotionIntent.Idle;
+        public float Speed => speed;
+        public float TurnRate => turnRate;
+        public bool IsTalking { get; private set; }
+
+        public event Action<MotionIntent, MotionIntent> IntentChanged;
+
+        private void Awake()
+        {
+            if (animator == null)
+            {
+                animator = GetComponentInChildren<Animator>();
+            }
+        }
+
+        private void OnEnable()
+        {
+            if (stateController != null)
+            {
+                stateController.StateChanged += HandleDialogueStateChanged;
+                HandleDialogueStateChanged(stateController.CurrentState, stateController.CurrentState);
+            }
+        }
+
+        private void OnDisable()
+        {
+            if (stateController != null)
+            {
+                stateController.StateChanged -= HandleDialogueStateChanged;
+            }
+        }
+
+        public void Configure(Animator targetAnimator, DigitalHumanController controller)
+        {
+            bool wasEnabled = isActiveAndEnabled;
+            if (wasEnabled && stateController != null)
+            {
+                stateController.StateChanged -= HandleDialogueStateChanged;
+            }
+
+            animator = targetAnimator;
+            stateController = controller;
+
+            if (wasEnabled && stateController != null)
+            {
+                stateController.StateChanged += HandleDialogueStateChanged;
+            }
+        }
+
+        /// <summary>
+        /// Feeds one planner sample. <paramref name="rootSpeed"/> is metres per second and
+        /// <paramref name="rootTurnRate"/> is radians per second, matching the
+        /// <c>speed</c> and <c>angular_velocity</c> channels of a TrajectoryPlan point.
+        /// </summary>
+        public void SetMotion(MotionIntent intent, float rootSpeed, float rootTurnRate)
+        {
+            targetSpeed = Mathf.Max(0f, rootSpeed);
+            targetTurnRate = rootTurnRate;
+            SetIntent(intent);
+        }
+
+        public void SetIntent(MotionIntent intent)
+        {
+            if (CurrentIntent == intent)
+            {
+                return;
+            }
+
+            MotionIntent previous = CurrentIntent;
+            CurrentIntent = intent;
+            SetInteger(MotionIntentHash, (int)intent);
+            if (intent == MotionIntent.Wave)
+            {
+                TriggerWave();
+            }
+
+            IntentChanged?.Invoke(previous, intent);
+        }
+
+        public void TriggerWave()
+        {
+            if (animator != null && HasParameter(WaveHash, AnimatorControllerParameterType.Trigger))
+            {
+                animator.SetTrigger(WaveHash);
+            }
+        }
+
+        /// <summary>Brings the character to a stop without changing the intent.</summary>
+        public void Halt()
+        {
+            targetSpeed = 0f;
+            targetTurnRate = 0f;
+        }
+
+        private void Update()
+        {
+            if (parameterDamping <= 0f)
+            {
+                speed = targetSpeed;
+                turnRate = targetTurnRate;
+            }
+            else
+            {
+                float step = Time.deltaTime / parameterDamping;
+                speed = Mathf.Lerp(speed, targetSpeed, Mathf.Clamp01(step));
+                turnRate = Mathf.Lerp(turnRate, targetTurnRate, Mathf.Clamp01(step));
+            }
+
+            SetFloat(SpeedHash, speed);
+            SetFloat(TurnRateHash, turnRate);
+        }
+
+        private void HandleDialogueStateChanged(DigitalHumanState _, DigitalHumanState next)
+        {
+            IsTalking = next == DigitalHumanState.Speaking;
+            SetBool(TalkingHash, IsTalking);
+        }
+
+        private void SetFloat(int hash, float value)
+        {
+            if (animator != null && HasParameter(hash, AnimatorControllerParameterType.Float))
+            {
+                animator.SetFloat(hash, value);
+            }
+        }
+
+        private void SetInteger(int hash, int value)
+        {
+            if (animator != null && HasParameter(hash, AnimatorControllerParameterType.Int))
+            {
+                animator.SetInteger(hash, value);
+            }
+        }
+
+        private void SetBool(int hash, bool value)
+        {
+            if (animator != null && HasParameter(hash, AnimatorControllerParameterType.Bool))
+            {
+                animator.SetBool(hash, value);
+            }
+        }
+
+        private bool HasParameter(int hash, AnimatorControllerParameterType type)
+        {
+            if (animator == null || animator.runtimeAnimatorController == null)
+            {
+                return false;
+            }
+
+            AnimatorControllerParameter[] parameters = animator.parameters;
+            for (int i = 0; i < parameters.Length; i++)
+            {
+                if (parameters[i].nameHash == hash && parameters[i].type == type)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private void OnValidate()
+        {
+            parameterDamping = Mathf.Max(0f, parameterDamping);
+        }
+    }
+}
