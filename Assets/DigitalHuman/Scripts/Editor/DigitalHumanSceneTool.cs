@@ -247,6 +247,15 @@ namespace DigitalHuman.Editor
 
                 driver.Configure(contents.GetComponent<DialogueController>(), intent, face);
 
+                SpeechHeadMotion speechMotion = contents.GetComponent<SpeechHeadMotion>();
+                if (speechMotion == null)
+                {
+                    speechMotion = contents.AddComponent<SpeechHeadMotion>();
+                    report.Append("added SpeechHeadMotion; ");
+                }
+
+                speechMotion.Configure(contents.GetComponentInChildren<AudioSource>(), visual);
+
                 report.Append("ok");
 
                 PrefabUtility.SaveAsPrefabAsset(contents, VexaPrefabPath);

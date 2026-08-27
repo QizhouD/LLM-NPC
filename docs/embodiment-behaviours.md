@@ -13,11 +13,12 @@ Three components write to the same skeleton every frame, in this order:
 | Animator (built-in) | `DigitalHuman.controller` on `Vexa_Visual` | whole-body clip pose |
 | 100 | `ProceduralHumanoidAnimator` | root bounce, torso, head, upper arms, upper legs |
 | 200 | `ProceduralFaceController` | eyeballs, eyebrows, eyelashes, head and neck gaze |
+| 300 | `SpeechHeadMotion` | head and neck, driven by voice loudness |
 
-Both procedural components run in `LateUpdate` and read the current local rotation
-as their base, so each one adds to the result of the previous stage instead of
-replacing it. The order is pinned with `[DefaultExecutionOrder]` rather than left
-to Unity's arbitrary component ordering.
+All three procedural components run in `LateUpdate` and read the current local
+rotation as their base, so each one adds to the result of the previous stage
+instead of replacing it. The order is pinned with `[DefaultExecutionOrder]`
+rather than left to Unity's arbitrary component ordering.
 
 ## Locomotion
 
@@ -86,6 +87,33 @@ the vocabulary degrades to `neutral`.
 
 Brow rotations are mirrored on the right side so the pair moves symmetrically on
 a mirrored skeleton.
+
+## Speech-driven head motion
+
+`SpeechHeadMotion` reads the RMS of the AudioSource's current output buffer
+through `GetOutputData` and turns it into head motion: loudness contributes a
+downward nod, and a Perlin field gated by that same loudness adds yaw and roll.
+
+This is the **substitute** for lip sync, not an approximation of it. Since the
+mouth cannot move at all, the head carries the whole "this body is producing this
+sound" signal. The envelope is smoothed asymmetrically — a 60 ms attack so
+syllable onsets survive, a 220 ms release so the tail does not chatter.
+
+`Envelope` is exposed so an upper-body gesture layer can be weighted by speech
+intensity later.
+
+## Voice
+
+`OpenAITtsVoiceService` requests `/v1/audio/speech` with
+`response_format: "pcm"`, which returns headerless signed 16-bit little-endian
+mono at 24 kHz. Decoding that is a loop over the byte array into a float buffer,
+which is why it was chosen over MP3 or WAV: no codec dependency and no temp file.
+The key comes from `OPENAI_API_KEY` in the environment, the same convention
+`OpenAILLMService` uses, so nothing secret is ever in the project.
+
+`MockVoiceService` remains the default in the prefab. It generates a silent clip
+of the right length, which is enough to exercise the state machine without a key
+or a network call.
 
 ## What this character cannot do
 

@@ -132,6 +132,9 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 9148599187047371230, guid: 5e6fe4c989f824c4e9debdeee02d8777, type: 3}
       insertIndex: -1
       addedObject: {fileID: 5491696730198643510}
+    - targetCorrespondingSourceObject: {fileID: 9148599187047371230, guid: 5e6fe4c989f824c4e9debdeee02d8777, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 1148264756852702499}
   m_SourcePrefab: {fileID: 100100000, guid: 5e6fe4c989f824c4e9debdeee02d8777, type: 3}
 --- !u!1 &1698638790444469707 stripped
 GameObject:
@@ -210,6 +213,30 @@ MonoBehaviour:
   faceController: {fileID: 2962477942405826115}
   gestureHoldSeconds: 2.5
   logAnnotations: 0
+--- !u!114 &1148264756852702499
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1698638790444469707}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: cfa67c5406616b14789aa56bdc3f9462, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: DigitalHuman::DigitalHuman.SpeechHeadMotion
+  audioSource: {fileID: 8301967222473349652}
+  head: {fileID: 1523528672837804643}
+  neck: {fileID: 229013654000833719}
+  skeletonRoot: {fileID: 79158272087017476}
+  loudnessGain: 6
+  attack: 0.06
+  release: 0.22
+  nodDegrees: 3.5
+  swayYawDegrees: 2.5
+  swayRollDegrees: 1.8
+  swayFrequency: 0.55
+  neckShare: 0.35
 --- !u!114 &2509213621140019691 stripped
 MonoBehaviour:
   m_CorrespondingSourceObject: {fileID: 5455575459886122494, guid: 5e6fe4c989f824c4e9debdeee02d8777, type: 3}
@@ -259,6 +286,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8dcd6d509fa6d9a4b8825780f0465f8f, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DigitalHuman.DigitalHumanController
+--- !u!82 &8301967222473349652 stripped
+AudioSource:
+  m_CorrespondingSourceObject: {fileID: 1896613249591494145, guid: 5e6fe4c989f824c4e9debdeee02d8777, type: 3}
+  m_PrefabInstance: {fileID: 7594366978144771093}
+  m_PrefabAsset: {fileID: 0}
 --- !u!1001 &8536273216559057765
 PrefabInstance:
   m_ObjectHideFlags: 0
