@@ -22,16 +22,16 @@ todos:
     status: completed
   - id: tts-optional
     content: "Day 5 可选: 实现 OpenAITtsVoiceService 替换 MockVoiceService（/v1/audio/speech，pcm 24kHz mono 直接构造 AudioClip），配套音频振幅驱动的头部微动而非口型"
-    status: in_progress
+    status: completed
   - id: repo-hygiene
     content: "Day 6: 清理 Unity 仓库根目录 40+ 个 .log 和 NewFile1.txt，.gitignore 加 *.log，25 个 StepN Bootstrap 编辑器脚本合并或移入 Tools~/"
-    status: pending
+    status: completed
   - id: tests-asmdef
     content: "Day 6: 加 DigitalHuman.asmdef 与测试 asmdef，补 6 个纯逻辑单测（LLM 请求/响应 JSON、Persona 提示词、TrajectoryPlan 解析、intent 映射、标签解析降级）"
     status: completed
   - id: readme-video
     content: "Day 7: 重写 Unity README（GIF + 架构图 + intent 契约 + 链接 GTP 仓库，修 clone URL），GTP README 加回链，录制 demo 视频"
-    status: pending
+    status: completed
 isProject: false
 ---
 
