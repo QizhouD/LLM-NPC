@@ -24,6 +24,7 @@ namespace DigitalHuman
 
         private IConversationService conversationService;
         private CancellationTokenSource requestCancellation;
+        private bool replyPrecedesCommand;
 
         public bool IsDialogueActive { get; private set; }
         public bool IsBusy { get; private set; }
@@ -181,6 +182,7 @@ namespace DigitalHuman
             bool modelAnswered = false;
 
             IsBusy = true;
+            replyPrecedesCommand = looksLikeCommand;
             ThinkingStarted?.Invoke();
             dialogueUI?.SetThinking(true);
 
@@ -230,6 +232,7 @@ namespace DigitalHuman
             }
             finally
             {
+                replyPrecedesCommand = false;
                 if (ReferenceEquals(requestCancellation, localCancellation))
                 {
                     requestCancellation = null;
@@ -265,6 +268,12 @@ namespace DigitalHuman
             // reach the dialogue box or the voice service.
             ResponseAnnotation annotation =
                 ResponseAnnotationParser.Parse(response ?? string.Empty);
+            if (replyPrecedesCommand)
+            {
+                // The keyword parser is about to walk the body to a box or surface. A walk or
+                // turn tag would start a second route, towards the player, at the same time.
+                annotation = annotation.WithoutLocomotion();
+            }
 
             dialogueUI?.SetDialogueText(annotation.Text);
             NpcResponseReceived?.Invoke(annotation.Text);

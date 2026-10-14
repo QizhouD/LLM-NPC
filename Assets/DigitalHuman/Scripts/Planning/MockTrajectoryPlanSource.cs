@@ -85,6 +85,10 @@ namespace DigitalHuman.Planning
             List<float> cumulative = BuildArcLengthTable(path);
             float pathLength = cumulative[cumulative.Count - 1];
 
+            Vector3 currentVelocity = request.CurrentVelocity;
+            currentVelocity.y = 0f;
+            float entrySpeed = Mathf.Min(cruiseSpeed, currentVelocity.magnitude);
+
             List<TrajectoryPoint> points = new List<TrajectoryPoint>(horizonSteps);
             float travelled = 0f;
             float previousYaw = request.CurrentYaw;
@@ -92,7 +96,7 @@ namespace DigitalHuman.Planning
             for (int step = 0; step < horizonSteps; step++)
             {
                 float time = step * dt;
-                float speed = SpeedAt(travelled, pathLength);
+                float speed = SpeedAt(travelled, pathLength, entrySpeed);
                 Vector3 position = PositionAtDistance(path, cumulative, travelled);
                 Vector3 tangent = TangentAtDistance(path, cumulative, travelled, approachDirection);
 
@@ -202,7 +206,11 @@ namespace DigitalHuman.Planning
             return cumulative;
         }
 
-        private float SpeedAt(float travelled, float pathLength)
+        /// <param name="entrySpeed">
+        /// Speed the body already has. Replans arrive every second mid-walk, and ramping each
+        /// one up from rest makes the walk surge and stall once per replan.
+        /// </param>
+        private float SpeedAt(float travelled, float pathLength, float entrySpeed)
         {
             if (pathLength <= 1e-4f)
             {
@@ -210,7 +218,8 @@ namespace DigitalHuman.Planning
             }
 
             float remaining = Mathf.Max(0f, pathLength - travelled);
-            float accelerationLimit = Mathf.Sqrt(2f * acceleration * Mathf.Max(0f, travelled));
+            float accelerationLimit = Mathf.Sqrt(
+                entrySpeed * entrySpeed + 2f * acceleration * Mathf.Max(0f, travelled));
             float decelerationLimit = Mathf.Sqrt(2f * deceleration * remaining);
             // A standing start would otherwise sample exactly zero and never move.
             float floorSpeed = travelled <= 1e-4f ? cruiseSpeed * 0.25f : 0f;

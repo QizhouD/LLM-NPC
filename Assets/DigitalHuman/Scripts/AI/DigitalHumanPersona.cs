@@ -92,6 +92,7 @@ namespace DigitalHuman
                 .AppendLine("Keep responses concise and conversational.");
 
             AppendBehaviourTagInstructions(prompt);
+            AppendDirectActionInstructions(prompt);
 
             if (!string.IsNullOrWhiteSpace(additionalContext))
             {
@@ -132,6 +133,23 @@ namespace DigitalHuman
                     "you move.")
                 .AppendLine("Wrong: *walks over, smiling* Hi there. [intent:walk][emotion:happy]")
                 .AppendLine("Right: Hi there. [intent:walk][emotion:happy]");
+        }
+
+        /// <summary>
+        /// These requests are acted on by <see cref="AgentCommandController"/>, not by the
+        /// tags. A model that only knows the tag vocabulary refuses them ("I can't jump")
+        /// while the body goes ahead and does it.
+        /// </summary>
+        private static void AppendDirectActionInstructions(StringBuilder prompt)
+        {
+            prompt.AppendLine()
+                .AppendLine(
+                    "Your body also carries out these requests on its own: jumping, picking up " +
+                    "the red, blue or green box, dropping what you are holding, putting it on " +
+                    "the grey obstacle, and walking over to a box.")
+                .AppendLine(
+                    "When asked for one of them, agree in a few words and use [intent:idle]. " +
+                    "Never claim you cannot do them.");
         }
 
         private static string Normalize(string value, string fallback)

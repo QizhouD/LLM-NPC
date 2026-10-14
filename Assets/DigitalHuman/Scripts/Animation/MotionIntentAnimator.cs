@@ -15,7 +15,11 @@ namespace DigitalHuman
         public const string TurnRateParameter = "TurnRate";
         public const string MotionIntentParameter = "MotionIntent";
         public const string WaveParameter = "Wave";
+        public const string JumpParameter = "Jump";
         public const string TalkingParameter = "IsTalking";
+
+        public const string WaveStateName = "Wave";
+        public const string JumpStateName = "Jump";
 
         private const float AgentMovingThreshold = 0.05f;
 
@@ -23,7 +27,10 @@ namespace DigitalHuman
         private static readonly int TurnRateHash = Animator.StringToHash(TurnRateParameter);
         private static readonly int MotionIntentHash = Animator.StringToHash(MotionIntentParameter);
         private static readonly int WaveHash = Animator.StringToHash(WaveParameter);
+        private static readonly int JumpHash = Animator.StringToHash(JumpParameter);
         private static readonly int TalkingHash = Animator.StringToHash(TalkingParameter);
+        private static readonly int WaveStateHash = Animator.StringToHash(WaveStateName);
+        private static readonly int JumpStateHash = Animator.StringToHash(JumpStateName);
 
         [SerializeField] private Animator animator;
         [Tooltip("Seconds used to smooth Speed and TurnRate towards their targets.")]
@@ -46,6 +53,38 @@ namespace DigitalHuman
         public float Speed => speed;
         public float TurnRate => turnRate;
         public bool IsTalking { get; private set; }
+
+        /// <summary>Whether the controller has a jump state to play.</summary>
+        public bool CanJump => HasParameter(JumpHash, AnimatorControllerParameterType.Trigger);
+
+        /// <summary>
+        /// True from the moment a wave or jump is triggered until the Animator has left the
+        /// gesture state, so a caller can wait for a one-shot to finish.
+        /// </summary>
+        public bool IsPlayingGesture
+        {
+            get
+            {
+                if (animator == null || !animator.isActiveAndEnabled ||
+                    animator.runtimeAnimatorController == null)
+                {
+                    return false;
+                }
+
+                if (IsTriggerPending(WaveHash) || IsTriggerPending(JumpHash))
+                {
+                    return true;
+                }
+
+                if (IsGestureState(animator.GetCurrentAnimatorStateInfo(0)))
+                {
+                    return true;
+                }
+
+                return animator.IsInTransition(0) &&
+                       IsGestureState(animator.GetNextAnimatorStateInfo(0));
+            }
+        }
 
         public event Action<MotionIntent, MotionIntent> IntentChanged;
 
@@ -132,6 +171,14 @@ namespace DigitalHuman
             if (animator != null && HasParameter(WaveHash, AnimatorControllerParameterType.Trigger))
             {
                 animator.SetTrigger(WaveHash);
+            }
+        }
+
+        public void TriggerJump()
+        {
+            if (animator != null && CanJump)
+            {
+                animator.SetTrigger(JumpHash);
             }
         }
 
@@ -263,6 +310,18 @@ namespace DigitalHuman
             }
 
             return false;
+        }
+
+        private bool IsTriggerPending(int hash)
+        {
+            return HasParameter(hash, AnimatorControllerParameterType.Trigger) &&
+                   animator.GetBool(hash);
+        }
+
+        private static bool IsGestureState(AnimatorStateInfo state)
+        {
+            return state.shortNameHash == WaveStateHash ||
+                   state.shortNameHash == JumpStateHash;
         }
 
         private void OnValidate()

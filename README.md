@@ -90,7 +90,8 @@ Before this layer existed, `AgentCommandController` matched keywords and returne
 *before* the model was ever called, so any command-shaped input bypassed it
 entirely. That is fixed: the model always answers, and the keyword parser is
 reduced to supplying the world action for the sentence the model already replied
-to.
+to. On those turns a `walk` or `turn` tag from the model is dropped, because the
+parser is already moving the body and a second route would fight it.
 
 The model is asked to end each reply with two tags:
 
@@ -168,7 +169,13 @@ git lfs pull
 The GitHub repository name is historical; the project is the one described here.
 
 Open `Assets/Scenes/SampleScene.unity` and press Play. WASD to walk up to Vexa,
-`E` to start talking.
+`E` to start talking. F1, F2 and F3 switch the camera between following the player,
+following Vexa and a fixed overview; right-drag orbits and the scroll wheel zooms.
+
+For recording, press F5 anywhere in the editor (or
+`Digital Human > Demo > Play Full Action Demo`): it enters Play mode and types a scripted
+conversation that exercises every action into the chat box. See
+[docs/demo-recording.md](docs/demo-recording.md).
 
 **No API key is needed to evaluate the embodiment layer.** Without one the
 conversation degrades to `OfflineReplyHeuristic`, a keyword table that emits the

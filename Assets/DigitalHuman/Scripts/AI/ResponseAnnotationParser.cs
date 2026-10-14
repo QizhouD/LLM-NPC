@@ -30,6 +30,19 @@ namespace DigitalHuman
             HasIntent = hasIntent;
             HasEmotion = hasEmotion;
         }
+
+        /// <summary>
+        /// A copy without a <c>walk</c> or <c>turn</c> intent. Text, emotion and any other
+        /// intent are kept.
+        /// </summary>
+        public ResponseAnnotation WithoutLocomotion()
+        {
+            bool locomotion = HasIntent &&
+                              (Intent == MotionIntent.Walk || Intent == MotionIntent.Turn);
+            return locomotion
+                ? new ResponseAnnotation(Text, MotionIntents.Fallback, Emotion, false, HasEmotion)
+                : this;
+        }
     }
 
     /// <summary>

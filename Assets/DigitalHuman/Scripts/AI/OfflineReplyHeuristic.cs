@@ -22,6 +22,10 @@ namespace DigitalHuman
             {
                 (new[] { "stop", "wait", "stay", "hold" },
                     MotionIntent.Stop, FaceEmotion.Neutral, "Holding here"),
+                // The jump itself comes from the command parser; a locomotion tag here
+                // would start a walk under it.
+                (new[] { "jump", "跳" },
+                    MotionIntent.Idle, FaceEmotion.Happy, "Watch this"),
                 (new[] { "come", "follow", "walk", "over here", "approach", "closer" },
                     MotionIntent.Walk, FaceEmotion.Curious, "On my way"),
                 (new[] { "turn", "face", "look at me", "around" },

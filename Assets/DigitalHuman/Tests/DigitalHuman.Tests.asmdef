@@ -3,6 +3,7 @@
     "rootNamespace": "DigitalHuman.Tests",
     "references": [
         "DigitalHuman",
+        "DigitalHuman.Editor",
         "UnityEngine.TestRunner",
         "UnityEditor.TestRunner"
     ],

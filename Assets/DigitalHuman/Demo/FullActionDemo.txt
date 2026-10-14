@@ -1,0 +1,59 @@
+# Full action demo, played by ChatDemoDirector (F5 plays, F6 stops).
+#
+# Every ordinary line is typed into the chat box and sent, exactly as a player would send
+# it. Lines starting with @ are stage directions and never appear on screen:
+#   @camera overview | player | npc [front | side | back | free]
+#   @wait <seconds>          pause
+#   @hold <seconds>          pause after every finished action from here on (default 1.2)
+#   @typing <chars/second>   typing speed from here on (default 16)
+#   @nowait                  send the next line without waiting for its action to finish
+# Lines starting with # are comments.
+
+# Establishing shot, then the player's view of her.
+@camera overview
+@wait 2.5
+@camera player
+@wait 2
+
+# Greeting: wave and a happy face.
+@camera npc front
+@wait 1.2
+Hi there! Can you wave hello?
+
+# Open question: the thinking state, with gaze aversion while the reply is on its way.
+What can you do?
+
+Can you jump for me?
+
+# Walks to a box, picks it up, then sets it down again.
+@camera npc side
+Pick up the green box.
+Drop it.
+
+# Fetches a box and puts it on the obstacle.
+Now pick up the red box.
+Put it on the obstacle.
+
+# Turns on the spot to face the player.
+@camera npc front
+Turn around and face me.
+
+# Planned walk with the path overlay, interrupted mid-route, then resumed.
+@camera npc back
+@nowait
+Come over here!
+@wait 0.5
+Stop!
+@camera npc side
+Okay, come closer.
+
+# The same kind of request, worded differently.
+Grab the blue box.
+Drop it.
+
+@camera npc front
+Careful, don't break anything!
+
+Thank you! Wave goodbye to the camera.
+@camera overview
+@wait 3

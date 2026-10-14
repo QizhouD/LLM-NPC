@@ -120,6 +120,20 @@ namespace DigitalHuman.Tests
         }
 
         /// <summary>
+        /// The keyword parser performs these whatever the model says, so a model that does
+        /// not know about them refuses on screen while the body complies.
+        /// </summary>
+        [Test]
+        public void BuildSystemPrompt_ListsTheActionsTheBodyPerformsDirectly()
+        {
+            string prompt = persona.BuildSystemPrompt();
+
+            Assert.That(prompt, Does.Contain("jumping"));
+            Assert.That(prompt, Does.Contain("picking up"));
+            Assert.That(prompt, Does.Contain("Never claim you cannot do them."));
+        }
+
+        /// <summary>
         /// The prose is spoken aloud and the tags already move the body, so narrated actions
         /// like "*walks over, smiling*" are both redundant and unspeakable. Observed coming
         /// back from a live model, hence the explicit instruction and this guard.

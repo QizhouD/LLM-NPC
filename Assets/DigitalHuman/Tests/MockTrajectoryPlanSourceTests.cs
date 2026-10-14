@@ -129,6 +129,27 @@ namespace DigitalHuman.Tests
         }
 
         [Test]
+        public void Plan_ReplanMidWalkKeepsTheCurrentSpeed()
+        {
+            const float cruise = 1.4f;
+            PlanRequest request = new PlanRequest(
+                Vector3.zero,
+                Mathf.PI * 0.5f,
+                new Vector3(cruise, 0f, 0f),
+                0f,
+                MotionIntent.Walk,
+                new PlanGoal(MotionIntent.Walk, new Vector3(10f, 0f, 0f)));
+
+            TrajectoryPlan plan = source.RequestPlanAsync(request).Result;
+
+            for (int i = 0; i < plan.PointCount; i++)
+            {
+                Assert.That(plan.Points[i].Speed, Is.EqualTo(cruise).Within(1e-3f),
+                    $"point {i} fell below the speed the body arrived with");
+            }
+        }
+
+        [Test]
         public void Plan_SpeedMatchesTheDistanceActuallyTravelled()
         {
             TrajectoryPlan plan = Plan(

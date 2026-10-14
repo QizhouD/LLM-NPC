@@ -158,6 +158,9 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 9148599187047371230, guid: 5e6fe4c989f824c4e9debdeee02d8777, type: 3}
       insertIndex: -1
       addedObject: {fileID: 765901585155586372}
+    - targetCorrespondingSourceObject: {fileID: 9148599187047371230, guid: 5e6fe4c989f824c4e9debdeee02d8777, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 6591856636580537620}
   m_SourcePrefab: {fileID: 100100000, guid: 5e6fe4c989f824c4e9debdeee02d8777, type: 3}
 --- !u!1 &1698638790444469707 stripped
 GameObject:
@@ -360,6 +363,33 @@ MonoBehaviour:
   timeoutSeconds: 30
   maxTokens: 160
   temperature: 1
+--- !u!114 &6591856636580537620
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1698638790444469707}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7cd6464fa532b8c4f8415ac0c72b425a, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: DigitalHuman::DigitalHuman.CharacterIKLayer
+  animator: {fileID: 661554521172795793}
+  alignToGround: 1
+  groundLayers:
+    serializedVersion: 2
+    m_Bits: 4294967291
+  crouchDrop: 0.48
+  crouchHipBack: 0.12
+  crouchLean: 62
+  reachUpLean: 16
+  gripHeight: 0.55
+  gripFingerDroop: 25
+  waveHandOffset: {x: 0.2, y: 0.3, z: 0.1}
+  waveFrequency: 1.8
+  waveSwing: 0.07
+  waveTilt: 18
 --- !u!114 &2509213621140019691 stripped
 MonoBehaviour:
   m_CorrespondingSourceObject: {fileID: 5455575459886122494, guid: 5e6fe4c989f824c4e9debdeee02d8777, type: 3}

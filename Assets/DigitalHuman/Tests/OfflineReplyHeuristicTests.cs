@@ -41,6 +41,18 @@ namespace DigitalHuman.Tests
             }
         }
 
+        [TestCase("Can you jump for me?")]
+        [TestCase("跳一下")]
+        public void BuildReply_JumpLeavesTheBodyToTheCommandParser(string message)
+        {
+            // The command parser plays the jump; a walk tag here would start a plan under it.
+            ResponseAnnotation annotation =
+                ResponseAnnotationParser.Parse(OfflineReplyHeuristic.BuildReply(message));
+
+            Assert.That(annotation.Intent, Is.EqualTo(MotionIntent.Idle));
+            Assert.That(annotation.Emotion, Is.EqualTo(FaceEmotion.Happy));
+        }
+
         [Test]
         public void BuildReply_LabelsItselfAsOffline()
         {

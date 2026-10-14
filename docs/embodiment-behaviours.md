@@ -11,7 +11,7 @@ Three components write to the same skeleton every frame, in this order:
 | Order | Component | Writes |
 | --- | --- | --- |
 | Animator (built-in) | `DigitalHuman.controller` on `Vexa_Visual` | whole-body clip pose |
-| 100 | `ProceduralHumanoidAnimator` | root bounce, torso, head, upper arms, upper legs |
+| 100 | `ProceduralHumanoidAnimator` | root height, torso, head, upper arms, upper legs, knees |
 | 200 | `ProceduralFaceController` | eyeballs, eyebrows, eyelashes, head and neck gaze |
 | 300 | `SpeechHeadMotion` | head and neck, driven by voice loudness |
 
@@ -28,7 +28,7 @@ the current clip has curves for, and never its own transform. For every other
 bone the read-back **is last frame's output**, so treating it as the base folds
 the previous offset in and the bone gains one offset per frame.
 
-This shipped as a bug: the walk bounce is a non-negative offset on the visual
+This shipped as a bug: the walk bounce was a non-negative offset on the visual
 root, so it accumulated and lifted the character off the floor while walking,
 which also made the only visible motion vertical. `AdditiveRotationChannel` and
 `AdditivePositionChannel` close the hole by remembering what they wrote and
@@ -38,21 +38,39 @@ must still measure as one offset.
 
 ## Locomotion
 
-The Vexa package ships no walk or run clip, so the stride is synthesised.
+The Vexa package ships no walk or run clip, so the stride is synthesised:
+`StrideGait` holds the geometry and `ProceduralHumanoidAnimator` applies it.
 
-- Stride phase is **integrated** (`phase += 2π·f·speed·dt`) rather than derived
-  from `Time.time`. With a varying frequency, a `Time.time`-based phase makes the
-  legs jump whenever the speed changes.
-- Stride frequency and amplitude both scale with normalised root speed, so
-  slowing down shortens the stride instead of just playing it slower.
+- Hip, knee and shoulder swings turn about the **body's** left-right axis,
+  converted into each bone's frame. On the Vexa armature local X runs along each
+  limb, so an offset about local X twists a leg in place instead of swinging it.
+  This shipped as a bug: thigh swing measured 0° and the feet moved 5 mm while
+  the toes yawed ±27°, so the legs never opened into a stride.
+- Stride phase advances with **distance covered**, not time:
+  `phase += speed·dt / strideLength`, with `strideLength = 4·legLength·sin(amplitude)`.
+  During stance the foot's offset from the hip falls at a constant rate, so the
+  planted foot moves back exactly as fast as the body moves forward and stays on
+  the floor at any speed. The old fixed 2.4 Hz cadence covered 0.58 m per cycle,
+  which read as shuffling. Integrating, rather than deriving the phase from
+  `Time.time`, also keeps the legs from jumping when the speed changes.
+- Swing returns the foot along a cubic whose end slopes match stance, so the hip
+  does not snap at heel strike or toe off. The knee bends only during swing, and
+  the hips drop while the straight stance leg is pitched away from vertical, as
+  an inverted pendulum would. `hipDropScale` takes only part of that drop because
+  heel and toe roll lengthen a real leg.
+- Hip amplitude scales with the square root of normalised speed and cadence
+  follows from it, so slowing down shortens the step and slows the cadence
+  together instead of just playing the same stride slower.
 - Turn rate produces an inward torso and head lean. Leaning into a turn is what
   keeps the centre of mass over the support foot; without it a turning character
   reads as sliding.
-- Three speeds have to agree or the feet skate: the stride's `referenceSpeed`,
-  the mock planner's `cruiseSpeed`, and the `NavMeshAgent.speed`. All are 1.4 m/s.
-  The agent's Unity default is 2.6 m/s, which is a jog, and pairing it with a
-  walk-frequency stride is what makes a character look like it has no walk
-  animation at all.
+- Three speeds should agree: the stride's `referenceSpeed`, the mock planner's
+  `cruiseSpeed`, and the `NavMeshAgent.speed`. All are 1.4 m/s. The stride stops
+  lengthening at `referenceSpeed` and only the cadence rises beyond it, so the
+  agent's Unity default of 2.6 m/s, a jog, plays a walk at three steps a second.
+- The mock planner replans every second and starts each plan from the speed the
+  body already has. Starting from its 0.35 m/s floor instead made the body surge
+  and stall once a second while the legs kept walking.
 
 The character can be driven along either of two paths, and both have to feed the
 Animator. `TrajectoryPlanFollower` calls `SetMotion` while following a plan;

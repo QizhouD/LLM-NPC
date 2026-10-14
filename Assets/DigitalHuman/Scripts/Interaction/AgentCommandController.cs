@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using DigitalHuman.Planning;
 using UnityEngine;
 
 namespace DigitalHuman
@@ -14,7 +15,8 @@ namespace DigitalHuman
             Move,
             Pickup,
             Drop,
-            Place
+            Place,
+            Jump
         }
 
         [SerializeField] private DialogueController dialogueController;
@@ -22,7 +24,10 @@ namespace DigitalHuman
         [SerializeField] private AgentInteraction interaction;
         [SerializeField, Min(2f)] private float commandTimeout = 18f;
         [SerializeField, Min(0f)] private float acknowledgementDelay = 0.2f;
+        [SerializeField, Min(0.5f)] private float jumpTimeout = 3f;
 
+        private MotionIntentAnimator intentAnimator;
+        private TrajectoryPlanFollower planFollower;
         private Coroutine activeCommand;
         private bool announceAcknowledgementsInternal = true;
 
@@ -48,6 +53,7 @@ namespace DigitalHuman
             {
                 StopCoroutine(activeCommand);
                 activeCommand = null;
+                interaction?.CancelAction();
             }
 
             movement?.Stop();
@@ -103,6 +109,27 @@ namespace DigitalHuman
             if (activeCommand != null)
             {
                 Respond("I'm still carrying out the last command. Please wait.", false);
+                return true;
+            }
+
+            // A plan started by an earlier walk tag still owns the root, and would drag the
+            // body one way while the NavMesh route below pulls it another.
+            if (planFollower != null && planFollower.IsFollowing)
+            {
+                planFollower.StopFollowing();
+            }
+
+            if (kind == CommandKind.Jump)
+            {
+                if (intentAnimator == null || !intentAnimator.CanJump)
+                {
+                    const string unable = "I can't jump right now.";
+                    Respond(unable, false);
+                    CommandFailed?.Invoke(unable);
+                    return true;
+                }
+
+                activeCommand = StartCoroutine(ExecuteJumpRoutine(command.Trim()));
                 return true;
             }
 
@@ -177,11 +204,15 @@ namespace DigitalHuman
             SetState(AgentNpcState.Interacting);
             yield return interaction.FaceTarget(target);
 
-            if (kind == CommandKind.Pickup && !interaction.Pickup(target))
+            if (kind == CommandKind.Pickup)
             {
-                FailCurrentCommand(
-                    $"I reached the {displayName}, but I couldn't pick it up.");
-                yield break;
+                yield return interaction.PickupRoutine(target);
+                if (!interaction.LastActionSucceeded)
+                {
+                    FailCurrentCommand(
+                        $"I reached the {displayName}, but I couldn't pick it up.");
+                    yield break;
+                }
             }
 
             movement.EndFacingOverride();
@@ -189,6 +220,36 @@ namespace DigitalHuman
             string success = kind == CommandKind.Pickup
                 ? $"I've picked up the {displayName}."
                 : $"I've arrived at the {displayName}.";
+            Respond(success, true);
+            CommandCompleted?.Invoke(success);
+            yield return new WaitForSeconds(0.2f);
+            FinishCommand();
+        }
+
+        private IEnumerator ExecuteJumpRoutine(string originalCommand)
+        {
+            SetState(AgentNpcState.Talking);
+            Respond("Okay, watch this.", true);
+            CommandAccepted?.Invoke(originalCommand);
+            if (acknowledgementDelay > 0f)
+            {
+                yield return new WaitForSeconds(acknowledgementDelay);
+            }
+
+            movement?.Stop();
+            SetState(AgentNpcState.Interacting);
+            intentAnimator.TriggerJump();
+
+            // One frame for the Animator to take the trigger, then wait out the clip.
+            yield return null;
+            float deadline = Time.time + jumpTimeout;
+            while (intentAnimator.IsPlayingGesture && Time.time < deadline)
+            {
+                yield return null;
+            }
+
+            SetState(AgentNpcState.Talking);
+            const string success = "Ta-da!";
             Respond(success, true);
             CommandCompleted?.Invoke(success);
             yield return new WaitForSeconds(0.2f);
@@ -223,7 +284,8 @@ namespace DigitalHuman
             }
 
             SetState(AgentNpcState.Interacting);
-            if (!interaction.DropInFront())
+            yield return interaction.DropRoutine();
+            if (!interaction.LastActionSucceeded)
             {
                 FailCurrentCommand($"I couldn't drop the {displayName}.");
                 yield break;
@@ -305,7 +367,8 @@ namespace DigitalHuman
 
                 SetState(AgentNpcState.Interacting);
                 yield return interaction.FaceTarget(itemToPlace);
-                if (!interaction.Pickup(itemToPlace))
+                yield return interaction.PickupRoutine(itemToPlace);
+                if (!interaction.LastActionSucceeded)
                 {
                     FailCurrentCommand(
                         $"I reached the {itemDisplay}, but I couldn't pick it up.");
@@ -320,8 +383,8 @@ namespace DigitalHuman
             }
 
             SetState(AgentNpcState.Interacting);
-            yield return interaction.FaceTarget(surface.gameObject);
-            if (!interaction.PlaceHeldItemOn(surface))
+            yield return interaction.PlaceRoutine(surface);
+            if (!interaction.LastActionSucceeded)
             {
                 FailCurrentCommand(
                     $"I reached the {surfaceName}, but I couldn't place the {itemDisplay}.");
@@ -455,6 +518,12 @@ namespace DigitalHuman
             if (mentionsDrop)
             {
                 kind = CommandKind.Drop;
+                return true;
+            }
+
+            if (ContainsAny(normalized, "jump", "跳"))
+            {
+                kind = CommandKind.Jump;
                 return true;
             }
 
@@ -672,12 +741,23 @@ namespace DigitalHuman
             {
                 interaction = GetComponent<AgentInteraction>();
             }
+
+            if (intentAnimator == null)
+            {
+                intentAnimator = GetComponent<MotionIntentAnimator>();
+            }
+
+            if (planFollower == null)
+            {
+                planFollower = GetComponent<TrajectoryPlanFollower>();
+            }
         }
 
         private void OnValidate()
         {
             commandTimeout = Mathf.Max(2f, commandTimeout);
             acknowledgementDelay = Mathf.Max(0f, acknowledgementDelay);
+            jumpTimeout = Mathf.Max(0.5f, jumpTimeout);
         }
     }
 }

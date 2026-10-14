@@ -19,6 +19,15 @@ namespace DigitalHuman.Editor
         private const string ClipSearchFolder =
             "Assets/Vefects/Stylized Female Character - Vexa/Animations";
 
+        // The model Vexa_Visual is instantiated from; retargeted curves must resolve on it.
+        private const string RigPrefabPath =
+            "Assets/Vefects/Stylized Female Character - Vexa/Prefabs/Vefects_Vexa.prefab";
+
+        private const string RetargetFolder = "Assets/DigitalHuman/Animations/Retargeted";
+
+        // IdleChill animates this node at -90 degrees; the model keeps it at identity.
+        private static readonly string[] BakedRigNodes = { "Armature" };
+
         private const string IdleClipName = "Idle";
         private const string IdleVariationClipName = "IdleChill";
 
@@ -26,8 +35,8 @@ namespace DigitalHuman.Editor
         // idle clip at both ends and ProceduralHumanoidAnimator supplies the stride.
         private const string WalkClipName = "Walk";
 
-        // Closest thing to a greeting in the shipped set: a short one-handed flick.
-        private const string WaveClipName = "SnappySpell";
+        // Crouch, take-off and landing in place, one second long.
+        private const string JumpClipName = "JumpComplete";
 
         private const float ReferenceSpeed = 1.4f;
 
@@ -41,16 +50,24 @@ namespace DigitalHuman.Editor
                 return $"FAILED: no AnimatorController at {ControllerPath}";
             }
 
+            GameObject rig = AssetDatabase.LoadAssetAtPath<GameObject>(RigPrefabPath);
+            if (rig == null)
+            {
+                return $"FAILED: no rig prefab at {RigPrefabPath}";
+            }
+
             Dictionary<string, AnimationClip> clips = LoadClips();
-            AnimationClip idle = Resolve(clips, IdleClipName);
+            StringBuilder report = new StringBuilder();
+            AnimationClip idle = Retargeted(clips, IdleClipName, rig.transform, report);
             if (idle == null)
             {
                 return $"FAILED: clip '{IdleClipName}' not found under {ClipSearchFolder}";
             }
 
-            AnimationClip idleVariation = Resolve(clips, IdleVariationClipName) ?? idle;
-            AnimationClip walk = Resolve(clips, WalkClipName) ?? idle;
-            AnimationClip wave = Resolve(clips, WaveClipName);
+            AnimationClip idleVariation =
+                Retargeted(clips, IdleVariationClipName, rig.transform, report) ?? idle;
+            AnimationClip walk = Retargeted(clips, WalkClipName, rig.transform, report) ?? idle;
+            AnimationClip jump = Retargeted(clips, JumpClipName, rig.transform, report);
 
             ResetController(controller);
 
@@ -58,6 +75,7 @@ namespace DigitalHuman.Editor
             controller.AddParameter(MotionIntentAnimator.TurnRateParameter, AnimatorControllerParameterType.Float);
             controller.AddParameter(MotionIntentAnimator.MotionIntentParameter, AnimatorControllerParameterType.Int);
             controller.AddParameter(MotionIntentAnimator.WaveParameter, AnimatorControllerParameterType.Trigger);
+            controller.AddParameter(MotionIntentAnimator.JumpParameter, AnimatorControllerParameterType.Trigger);
             controller.AddParameter(MotionIntentAnimator.TalkingParameter, AnimatorControllerParameterType.Bool);
 
             AnimatorStateMachine baseLayer = controller.layers[0].stateMachine;
@@ -95,31 +113,36 @@ namespace DigitalHuman.Editor
             variationInterrupt.AddCondition(
                 AnimatorConditionMode.Greater, 0.15f, MotionIntentAnimator.SpeedParameter);
 
-            StringBuilder report = new StringBuilder();
-            if (wave != null)
+            // The package has no wave. CharacterIKLayer raises and waves the arm for as long
+            // as this state plays, so the clip only has to keep the rest of the body idling.
+            // Its length over the state speed sets how long the wave lasts: about 3 s.
+            AnimatorState waveState = baseLayer.AddState(MotionIntentAnimator.WaveStateName);
+            waveState.motion = idle;
+            waveState.speed = 0.75f;
+            AddTriggeredTransition(locomotion, waveState, MotionIntentAnimator.WaveParameter);
+            AddTriggeredTransition(idleBreak, waveState, MotionIntentAnimator.WaveParameter);
+
+            AnimatorStateTransition fromWave = waveState.AddTransition(locomotion);
+            fromWave.hasExitTime = true;
+            fromWave.exitTime = 0.85f;
+            fromWave.duration = 0.25f;
+
+            if (jump != null)
             {
-                AnimatorState waveState = baseLayer.AddState("Wave");
-                waveState.motion = wave;
+                AnimatorState jumpState = baseLayer.AddState(MotionIntentAnimator.JumpStateName);
+                jumpState.motion = jump;
+                AddTriggeredTransition(locomotion, jumpState, MotionIntentAnimator.JumpParameter);
+                AddTriggeredTransition(idleBreak, jumpState, MotionIntentAnimator.JumpParameter);
 
-                AnimatorStateTransition toWave = locomotion.AddTransition(waveState);
-                toWave.hasExitTime = false;
-                toWave.duration = 0.15f;
-                toWave.AddCondition(AnimatorConditionMode.If, 0f, MotionIntentAnimator.WaveParameter);
-
-                AnimatorStateTransition variationToWave = idleBreak.AddTransition(waveState);
-                variationToWave.hasExitTime = false;
-                variationToWave.duration = 0.15f;
-                variationToWave.AddCondition(
-                    AnimatorConditionMode.If, 0f, MotionIntentAnimator.WaveParameter);
-
-                AnimatorStateTransition fromWave = waveState.AddTransition(locomotion);
-                fromWave.hasExitTime = true;
-                fromWave.exitTime = 0.85f;
-                fromWave.duration = 0.25f;
+                // The clip is imported looping, so leave on exit time before it starts again.
+                AnimatorStateTransition fromJump = jumpState.AddTransition(locomotion);
+                fromJump.hasExitTime = true;
+                fromJump.exitTime = 0.92f;
+                fromJump.duration = 0.15f;
             }
             else
             {
-                report.AppendLine($"  WARNING clip '{WaveClipName}' not found, Wave state skipped.");
+                report.AppendLine($"  WARNING clip '{JumpClipName}' not found, Jump state skipped.");
             }
 
             EditorUtility.SetDirty(controller);
@@ -128,10 +151,11 @@ namespace DigitalHuman.Editor
 
             report.Insert(0,
                 $"Rebuilt {ControllerPath}\n" +
-                $"  parameters: Speed, TurnRate, MotionIntent, Wave, IsTalking\n" +
+                $"  parameters: Speed, TurnRate, MotionIntent, Wave, Jump, IsTalking\n" +
                 $"  idle={idle.name} idleVariation={idleVariation.name} " +
                 $"walk={walk.name}{(walk == idle ? " (placeholder, no walk clip in package)" : string.Empty)} " +
-                $"wave={(wave != null ? wave.name : "none")}\n");
+                $"wave={idle.name} + procedural arm " +
+                $"jump={(jump != null ? jump.name : "none")}\n");
             string result = report.ToString().TrimEnd();
             Debug.Log(result);
             return result;
@@ -172,6 +196,17 @@ namespace DigitalHuman.Editor
             string result = report.ToString().TrimEnd();
             Debug.Log(result);
             return result;
+        }
+
+        private static void AddTriggeredTransition(
+            AnimatorState from,
+            AnimatorState to,
+            string trigger)
+        {
+            AnimatorStateTransition transition = from.AddTransition(to);
+            transition.hasExitTime = false;
+            transition.duration = 0.15f;
+            transition.AddCondition(AnimatorConditionMode.If, 0f, trigger);
         }
 
         private static void ResetController(AnimatorController controller)
@@ -230,6 +265,32 @@ namespace DigitalHuman.Editor
             string name)
         {
             return clips.TryGetValue(name, out AnimationClip clip) ? clip : null;
+        }
+
+        /// <summary>
+        /// The imported clip copied so that its curves bind on <paramref name="rig"/>. See
+        /// <see cref="ClipRetargeter"/> for why the package clips do not bind as shipped.
+        /// </summary>
+        private static AnimationClip Retargeted(
+            Dictionary<string, AnimationClip> clips,
+            string name,
+            Transform rig,
+            StringBuilder report)
+        {
+            AnimationClip source = Resolve(clips, name);
+            if (source == null)
+            {
+                return null;
+            }
+
+            AnimationClip clip = ClipRetargeter.Retarget(
+                source,
+                rig,
+                $"{RetargetFolder}/{name}.anim",
+                BakedRigNodes,
+                out string clipReport);
+            report.AppendLine("  " + clipReport);
+            return clip;
         }
     }
 }

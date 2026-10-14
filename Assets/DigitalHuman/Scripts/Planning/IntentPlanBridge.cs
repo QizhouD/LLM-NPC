@@ -41,6 +41,9 @@ namespace DigitalHuman.Planning
 
         public int LastObstacleCount { get; private set; }
 
+        /// <summary>The explicit approach target. Null means whoever the LookAtController tracks.</summary>
+        public Transform ApproachTarget => approachTarget;
+
         private void Awake()
         {
             if (dialogueController == null)
@@ -96,6 +99,11 @@ namespace DigitalHuman.Planning
             {
                 dialogueController.ResponseAnnotationReceived += HandleAnnotation;
             }
+        }
+
+        public void SetApproachTarget(Transform target)
+        {
+            approachTarget = target;
         }
 
         private void HandleAnnotation(ResponseAnnotation annotation)

@@ -13,8 +13,12 @@ namespace DigitalHuman
         [SerializeField, Min(0.05f)] private float arrivalTolerance = 0.12f;
         [SerializeField, Min(0.1f)] private float navMeshSampleRadius = 2.5f;
 
+        private const float PreciseArrivalTolerance = 0.04f;
+
         private bool facingOverrideActive;
         private bool restoreFacePlayer;
+        private float defaultStoppingDistance = -1f;
+        private float activeArrivalTolerance = -1f;
 
         public NavMeshAgent NavMeshAgent => navMeshAgent;
         public bool IsMoving { get; private set; }
@@ -54,9 +58,10 @@ namespace DigitalHuman
                 return;
             }
 
+            float tolerance = activeArrivalTolerance > 0f ? activeArrivalTolerance : arrivalTolerance;
             float threshold = Mathf.Max(
-                navMeshAgent.stoppingDistance + arrivalTolerance,
-                arrivalTolerance);
+                navMeshAgent.stoppingDistance + tolerance,
+                tolerance);
             if (navMeshAgent.remainingDistance > threshold ||
                 navMeshAgent.velocity.sqrMagnitude > 0.01f)
             {
@@ -66,6 +71,7 @@ namespace DigitalHuman
             IsMoving = false;
             HasReachedDestination = true;
             navMeshAgent.isStopped = true;
+            RestoreStoppingDistance();
             DestinationReached?.Invoke(transform.position);
             Debug.Log(
                 $"[AgentNPC] Destination reached at {transform.position}.",
@@ -86,6 +92,17 @@ namespace DigitalHuman
 
         public bool MoveTo(Vector3 destination)
         {
+            return MoveTo(destination, -1f);
+        }
+
+        /// <summary>
+        /// Walks to <paramref name="destination"/> and stops within
+        /// <paramref name="stoppingDistance"/> of it, or within the agent's own stopping
+        /// distance when that is negative. The agent's value is tuned for keeping a polite
+        /// distance from the player, which leaves the body too far away to reach an object.
+        /// </summary>
+        public bool MoveTo(Vector3 destination, float stoppingDistance)
+        {
             ResolveReferences();
             RequestedDestination = destination;
             HasReachedDestination = false;
@@ -93,6 +110,14 @@ namespace DigitalHuman
             if (navMeshAgent == null)
             {
                 return FailMovement("NavMeshAgent is missing.");
+            }
+
+            RestoreStoppingDistance();
+            if (stoppingDistance >= 0f)
+            {
+                defaultStoppingDistance = navMeshAgent.stoppingDistance;
+                navMeshAgent.stoppingDistance = stoppingDistance;
+                activeArrivalTolerance = PreciseArrivalTolerance;
             }
 
             if (!EnsurePlacedOnNavMesh())
@@ -128,6 +153,7 @@ namespace DigitalHuman
         public void Stop()
         {
             IsMoving = false;
+            RestoreStoppingDistance();
             if (navMeshAgent == null || !navMeshAgent.isOnNavMesh)
             {
                 return;
@@ -186,10 +212,22 @@ namespace DigitalHuman
             return navMeshAgent.Warp(hit.position);
         }
 
+        private void RestoreStoppingDistance()
+        {
+            if (defaultStoppingDistance >= 0f && navMeshAgent != null)
+            {
+                navMeshAgent.stoppingDistance = defaultStoppingDistance;
+            }
+
+            defaultStoppingDistance = -1f;
+            activeArrivalTolerance = -1f;
+        }
+
         private bool FailMovement(string reason)
         {
             IsMoving = false;
             HasReachedDestination = false;
+            RestoreStoppingDistance();
             MovementFailed?.Invoke(reason);
             Debug.LogError($"[AgentNPC] Movement failed: {reason}", this);
             return false;

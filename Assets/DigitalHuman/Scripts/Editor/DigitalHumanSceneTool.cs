@@ -237,9 +237,8 @@ namespace DigitalHuman.Editor
         /// synthesises and the speed the mock planner cruises at.
         /// </summary>
         /// <remarks>
-        /// The stride frequency and amplitude are calibrated for 1.4 m/s. Driving the body
-        /// across the floor at the agent's default 2.6 m/s makes the feet skate, which reads
-        /// as "there is no walk animation" even once the stride is running.
+        /// The stride stops lengthening at 1.4 m/s and only its cadence rises beyond that, so
+        /// the agent's default 2.6 m/s, a jog, plays a walk at three steps a second.
         /// </remarks>
         private static string MatchGroundSpeedToStride(GameObject owner)
         {
@@ -689,6 +688,193 @@ namespace DigitalHuman.Editor
             return result;
         }
 
+        private const string DemoScriptPath = "Assets/DigitalHuman/Demo/FullActionDemo.txt";
+        private const string DemoScenePath = "Assets/Scenes/SampleScene.unity";
+        private const string DemoDirectorName = "DemoDirector";
+        private const string PlayDemoOnEnterKey = "DigitalHuman.Demo.PlayOnEnter";
+        private const string RelaunchDemoKey = "DigitalHuman.Demo.RelaunchOnEditMode";
+        private const float DemoStartDelay = 1.5f;
+
+        /// <summary>
+        /// Puts <see cref="ThirdPersonFollowCamera"/> on the main camera and adds a
+        /// <see cref="ChatDemoDirector"/>, both pointed at the player and the active digital
+        /// human.
+        /// </summary>
+        [MenuItem("Digital Human/Demo/Wire Follow Camera And Demo Director")]
+        public static string WireDemoInScene()
+        {
+            Camera mainCamera = Camera.main;
+            DemoPlayerController player = Object.FindFirstObjectByType<DemoPlayerController>();
+            DialogueController npc = Object.FindFirstObjectByType<DialogueController>();
+            DialogueUI chat = Object.FindFirstObjectByType<DialogueUI>();
+            TextAsset script = AssetDatabase.LoadAssetAtPath<TextAsset>(DemoScriptPath);
+            if (mainCamera == null || player == null || npc == null || chat == null || script == null)
+            {
+                return "FAILED: needs a MainCamera, a DemoPlayerController, an active " +
+                       $"DialogueController, a DialogueUI and {DemoScriptPath} " +
+                       $"(camera={mainCamera != null}, player={player != null}, " +
+                       $"npc={npc != null}, chat={chat != null}, script={script != null})";
+            }
+
+            StringBuilder report = new StringBuilder();
+            ThirdPersonFollowCamera follow = mainCamera.GetComponent<ThirdPersonFollowCamera>();
+            if (follow == null)
+            {
+                follow = Undo.AddComponent<ThirdPersonFollowCamera>(mainCamera.gameObject);
+                report.Append("added ThirdPersonFollowCamera; ");
+            }
+
+            follow.Configure(player.transform, npc.transform);
+            EditorUtility.SetDirty(follow);
+
+            GameObject directorObject = GameObject.Find(DemoDirectorName);
+            if (directorObject == null)
+            {
+                directorObject = new GameObject(DemoDirectorName);
+                Undo.RegisterCreatedObjectUndo(directorObject, "Create demo director");
+                report.Append($"created {DemoDirectorName}; ");
+            }
+
+            ChatDemoDirector director = directorObject.GetComponent<ChatDemoDirector>();
+            if (director == null)
+            {
+                director = Undo.AddComponent<ChatDemoDirector>(directorObject);
+                report.Append("added ChatDemoDirector; ");
+            }
+
+            director.Configure(script, chat, npc, follow, player.transform);
+            EditorUtility.SetDirty(director);
+            report.Append(
+                $"camera follows {player.name} and {npc.name}; director plays {script.name}");
+
+            EditorSceneManager.MarkSceneDirty(SceneManager.GetActiveScene());
+            EditorSceneManager.SaveOpenScenes();
+            string result = report.ToString();
+            Debug.Log(result);
+            return result;
+        }
+
+        /// <summary>
+        /// One key for a clean take, from any editor state: opens the sample scene when the open
+        /// one has no director, enters Play mode and starts the demo. In Play mode it restarts
+        /// Play mode first, so every take begins from the scene as saved rather than wherever
+        /// the previous take left the boxes and the two characters.
+        /// </summary>
+        [MenuItem("Digital Human/Demo/Play Full Action Demo _F5")]
+        public static string PlayFullActionDemo()
+        {
+            if (!EditorApplication.isPlaying)
+            {
+                return LaunchDemoFromEditMode();
+            }
+
+            SessionState.SetBool(RelaunchDemoKey, true);
+            EditorApplication.isPlaying = false;
+            return ReportDemoLaunch("restarting Play mode for a clean take");
+        }
+
+        [MenuItem("Digital Human/Demo/Stop Full Action Demo _F6")]
+        public static string StopFullActionDemo()
+        {
+            ChatDemoDirector director = Object.FindFirstObjectByType<ChatDemoDirector>();
+            if (director == null || !director.IsRunning)
+            {
+                return "no demo running";
+            }
+
+            director.Stop();
+            return "demo stopped";
+        }
+
+        [MenuItem("Digital Human/Demo/Stop Full Action Demo _F6", true)]
+        private static bool CanStopFullActionDemo()
+        {
+            return EditorApplication.isPlaying;
+        }
+
+        private static string LaunchDemoFromEditMode()
+        {
+            if (Object.FindFirstObjectByType<ChatDemoDirector>() == null)
+            {
+                if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+                {
+                    return ReportDemoLaunch("cancelled");
+                }
+
+                EditorSceneManager.OpenScene(DemoScenePath);
+                if (Object.FindFirstObjectByType<ChatDemoDirector>() == null)
+                {
+                    return ReportDemoLaunch(
+                        $"FAILED: {DemoScenePath} has no ChatDemoDirector. Run " +
+                        "Digital Human/Demo/Wire Follow Camera And Demo Director first.",
+                        failed: true);
+                }
+            }
+
+            SessionState.SetBool(PlayDemoOnEnterKey, true);
+            EditorApplication.isPlaying = true;
+            return ReportDemoLaunch("entering Play mode; the demo starts once the scene is up");
+        }
+
+        // A shortcut has nowhere to show a return value, so every outcome goes to the console.
+        private static string ReportDemoLaunch(string outcome, bool failed = false)
+        {
+            string message = "[Demo] " + outcome;
+            if (failed)
+            {
+                Debug.LogWarning(message);
+            }
+            else
+            {
+                Debug.Log(message);
+            }
+
+            return message;
+        }
+
+        [InitializeOnLoadMethod]
+        private static void ListenForDemoPlayMode()
+        {
+            EditorApplication.playModeStateChanged -= ContinueDemoLaunch;
+            EditorApplication.playModeStateChanged += ContinueDemoLaunch;
+        }
+
+        private static void ContinueDemoLaunch(PlayModeStateChange change)
+        {
+            if (change == PlayModeStateChange.EnteredEditMode &&
+                SessionState.GetBool(RelaunchDemoKey, false))
+            {
+                SessionState.EraseBool(RelaunchDemoKey);
+                // Deferred because the editor is still finishing the exit when this runs. Not via
+                // delayCall: that can sit unprocessed while the editor is in the background.
+                EditorApplication.update += RelaunchDemoOnNextUpdate;
+                return;
+            }
+
+            if (change != PlayModeStateChange.EnteredPlayMode ||
+                !SessionState.GetBool(PlayDemoOnEnterKey, false))
+            {
+                return;
+            }
+
+            SessionState.EraseBool(PlayDemoOnEnterKey);
+            ChatDemoDirector director = Object.FindFirstObjectByType<ChatDemoDirector>();
+            if (director != null)
+            {
+                director.Play(DemoStartDelay);
+            }
+            else
+            {
+                Debug.LogWarning("[Demo] No ChatDemoDirector in the scene.");
+            }
+        }
+
+        private static void RelaunchDemoOnNextUpdate()
+        {
+            EditorApplication.update -= RelaunchDemoOnNextUpdate;
+            LaunchDemoFromEditMode();
+        }
+
         /// <summary>
         /// Adds the planning path alongside the NavMesh one. The mock source is the default
         /// because every real planner export is currently a fallback; see the README.
@@ -762,9 +948,9 @@ namespace DigitalHuman.Editor
                     AssetDatabase.LoadAssetAtPath<RuntimeAnimatorController>(
                         AnimatorControllerBuilder.ControllerPath);
 
-                // Vexa clips address bones as "Armature/Base Human...", relative to the
-                // model root. The Animator therefore has to sit on Vexa_Visual, not on the
-                // NPC root, or nothing binds.
+                // The controller's clips are retargeted to address bones as
+                // "Armature/Base Human...", relative to the model root. The Animator therefore
+                // has to sit on Vexa_Visual, not on the NPC root, or nothing binds.
                 Animator visualAnimator = visual.GetComponent<Animator>();
                 if (visualAnimator == null)
                 {
@@ -838,6 +1024,15 @@ namespace DigitalHuman.Editor
                 }
 
                 speechMotion.Configure(contents.GetComponentInChildren<AudioSource>(), visual);
+
+                CharacterIKLayer ikLayer = contents.GetComponent<CharacterIKLayer>();
+                if (ikLayer == null)
+                {
+                    ikLayer = contents.AddComponent<CharacterIKLayer>();
+                    report.Append("added CharacterIKLayer; ");
+                }
+
+                ikLayer.Configure(visualAnimator);
 
                 report.Append(WirePlanningStack(contents, intent));
                 report.Append(WireChatProviders(contents));

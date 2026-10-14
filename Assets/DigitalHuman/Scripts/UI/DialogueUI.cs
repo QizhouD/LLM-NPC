@@ -292,15 +292,36 @@ namespace DigitalHuman
                 return;
             }
 
-            string transcript = string.Join("\n", history);
+            List<string> entries = new List<string>(history);
             if (!string.IsNullOrWhiteSpace(temporaryEntry))
             {
-                transcript = string.IsNullOrEmpty(transcript)
-                    ? temporaryEntry
-                    : transcript + "\n" + temporaryEntry;
+                entries.Add(temporaryEntry);
             }
 
-            dialogueText.text = transcript;
+            dialogueText.text = NewestEntriesThatFit(entries);
+        }
+
+        // The history label has a fixed height and truncates whatever runs past its bottom
+        // edge, which is where the newest entry goes.
+        private string NewestEntriesThatFit(List<string> entries)
+        {
+            string transcript = string.Join("\n", entries);
+            Rect area = dialogueText.rectTransform.rect;
+            if (area.width <= 0f || area.height <= 0f)
+            {
+                return transcript;
+            }
+
+            int first = 0;
+            while (first < entries.Count - 1 &&
+                   dialogueText.GetPreferredValues(transcript, area.width, area.height).y >
+                   area.height)
+            {
+                first++;
+                transcript = string.Join("\n", entries.GetRange(first, entries.Count - first));
+            }
+
+            return transcript;
         }
 
         private void ApplyPersistentPanelState()

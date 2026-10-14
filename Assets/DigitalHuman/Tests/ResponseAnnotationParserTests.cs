@@ -157,5 +157,33 @@ namespace DigitalHuman.Tests
                 ResponseAnnotationParser.StripTags("Hello. [intent:nonsense][emotion:nonsense]"),
                 Is.EqualTo("Hello."));
         }
+
+        [TestCase("[intent:walk]")]
+        [TestCase("[intent:turn]")]
+        public void WithoutLocomotion_DropsWalkAndTurnButKeepsTheRest(string intentTag)
+        {
+            ResponseAnnotation result = ResponseAnnotationParser
+                .Parse("Sure, grabbing it. " + intentTag + "[emotion:happy]")
+                .WithoutLocomotion();
+
+            Assert.That(result.HasIntent, Is.False);
+            Assert.That(result.Intent, Is.EqualTo(MotionIntent.Idle));
+            Assert.That(result.HasEmotion, Is.True);
+            Assert.That(result.Emotion, Is.EqualTo(FaceEmotion.Happy));
+            Assert.That(result.Text, Is.EqualTo("Sure, grabbing it."));
+        }
+
+        [TestCase("[intent:wave]", MotionIntent.Wave)]
+        [TestCase("[intent:stop]", MotionIntent.Stop)]
+        [TestCase("[intent:idle]", MotionIntent.Idle)]
+        public void WithoutLocomotion_KeepsOtherIntents(string intentTag, MotionIntent expected)
+        {
+            ResponseAnnotation result = ResponseAnnotationParser
+                .Parse("Okay. " + intentTag)
+                .WithoutLocomotion();
+
+            Assert.That(result.HasIntent, Is.True);
+            Assert.That(result.Intent, Is.EqualTo(expected));
+        }
     }
 }
