@@ -5,6 +5,36 @@ same name in the
 [planner repo](https://github.com/QizhouD/language-conditioned-generative-trajectory-planning-for-real-time-digital-humans).
 The C# here has not yet been compiled or run inside Unity.
 
+## First run checklist
+
+1. Get the branch. If it is on GitHub: `git fetch origin` then
+   `git checkout feat/root-motion-layer`. From the patch file instead:
+   `git checkout -b feat/root-motion-layer` then
+   `git am --3way path\to\llm-npc-feat-root-motion-layer.patch`.
+2. Open the project in Unity 6000.2.15f1 and wait for the import. **Fix any compile
+   errors first**: this code was written without a Unity editor. If Unity rewrites
+   any of the new `.meta` files, commit its version.
+3. Run the EditMode tests (**Window > General > Test Runner**). The 15 tests in
+   `RootMotionPlanningTests` cover everything new that does not need a NavMesh.
+4. Press Play with the scene unchanged. `MockTrajectoryPlanSource` is still the
+   plan source, so the demo must behave exactly as before. This confirms the
+   follower changes are harmless.
+5. Try the classical baseline: follow [Wiring the scene](#wiring-the-scene) but put
+   `SpringPathPlanSource` in the follower's **Plan Source** slot. No Python needed.
+   Ask the character to walk over; it should follow the NavMesh route around the boxes.
+6. Try the learned planner: start the service (see
+   [Starting the service](#starting-the-service); the planner repo's
+   `docs/ROOT_MOTION_QUICKSTART.md` gets you a checkpoint), switch **Plan Source**
+   to `HttpTrajectoryPlanSource`, press Play. The Console should log
+   `[Planning] Plan origin: Model`.
+7. Stop the service while the character is walking. It should keep walking on the
+   spring fallback and the Console should log
+   `[Planning] Plan origin: LocalFallbackAfterError` with the reason.
+
+If step 6 logs `LocalFallbackAfterError` with the service running, check the
+URL and port on the component, then **Project Settings > Player > Other Settings >
+Allow downloads over HTTP**.
+
 ## Division of labour
 
 | Question | Who answers | How |
@@ -63,7 +93,8 @@ In the planner repo, with a trained checkpoint:
 python -m gtp.rootmotion.service --checkpoint runs/rootmotion_flow/best.pt --port 8787
 ```
 
-`HttpTrajectoryPlanSource.SourceName` shows where each plan came from:
+The Console logs each change of plan origin, and the metrics log's `source` column
+records it per step:
 `Model`, `ServiceFallback` (the service rejected all its samples and answered with
 its own spring plan), `LocalFallbackAfterError` (service unreachable) or
 `LocalFallbackAfterNavMeshReject`.

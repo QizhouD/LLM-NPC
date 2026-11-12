@@ -125,12 +125,12 @@ namespace DigitalHuman.Planning
             if (meta.source == "model")
             {
                 ModelPlanCount++;
-                LastOrigin = PlanOrigin.Model;
+                SetOrigin(PlanOrigin.Model);
             }
             else
             {
                 ServiceFallbackCount++;
-                LastOrigin = PlanOrigin.ServiceFallback;
+                SetOrigin(PlanOrigin.ServiceFallback);
             }
 
             LastError = string.Empty;
@@ -155,8 +155,21 @@ namespace DigitalHuman.Planning
             }
 
             TrajectoryPlan plan = await fallback.RequestPlanAsync(request, cancellationToken);
-            LastOrigin = origin;
+            SetOrigin(origin);
             return plan;
+        }
+
+        private void SetOrigin(PlanOrigin origin)
+        {
+            if (origin != LastOrigin)
+            {
+                // Logged on change only, so the Console shows each switch between the
+                // model and a fallback without a line per replan.
+                string reason = string.IsNullOrEmpty(LastError) ? string.Empty : $" ({LastError})";
+                Debug.Log($"[Planning] Plan origin: {origin}{reason}", this);
+            }
+
+            LastOrigin = origin;
         }
 
         private string PlanEndpoint()
