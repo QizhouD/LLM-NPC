@@ -1,0 +1,391 @@
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.Threading;
+using System.Threading.Tasks;
+using DigitalHuman.Planning;
+using NUnit.Framework;
+using UnityEngine;
+
+namespace DigitalHuman.Tests
+{
+    public sealed class RootMotionPlanningTests
+    {
+        private static readonly Vector3[] Corner =
+        {
+            new Vector3(0f, 0f, 0f), new Vector3(0f, 0f, 2f), new Vector3(1.5f, 0f, 2f)
+        };
+
+        private static PlanRequest Request(
+            IReadOnlyList<Vector3> corners = null,
+            bool endsAtGoal = true,
+            IReadOnlyList<RootSample> history = null,
+            LocomotionGait gait = LocomotionGait.Walk,
+            MotionIntent behavior = MotionIntent.Walk,
+            float goalYaw = 0f)
+        {
+            PlanGoal goal = new PlanGoal(behavior, new Vector3(1.5f, 0f, 2f), goalYaw);
+            return new PlanRequest(
+                Vector3.zero, 0f, Vector3.zero, 0f, MotionIntent.Idle, goal,
+                null, null, corners, endsAtGoal, history, gait);
+        }
+
+        [Test]
+        public void PathGeometry_MeasuresAndSamplesAlongThePath()
+        {
+            List<float> cumulative = new List<float>();
+            PathGeometry.BuildArcLengths(Corner, cumulative);
+
+            Assert.That(PathGeometry.Length(Corner), Is.EqualTo(3.5f).Within(1e-5f));
+            Assert.That(cumulative, Is.EqualTo(new[] { 0f, 2f, 3.5f }).Within(1e-5f));
+            Assert.That(PathGeometry.PointAt(Corner, cumulative, 2.5f),
+                Is.EqualTo(new Vector3(0.5f, 0f, 2f)).Using(Vector3EqualityComparer.Instance));
+            Assert.That(PathGeometry.PointAt(Corner, cumulative, 99f),
+                Is.EqualTo(Corner[2]).Using(Vector3EqualityComparer.Instance));
+            Assert.That(PathGeometry.DistanceToPath(Corner, new Vector3(1f, 5f, 1f)),
+                Is.EqualTo(1f).Within(1e-5f), "height must not count");
+        }
+
+        [Test]
+        public void PathGeometry_ProjectNeverMovesBackwards()
+        {
+            List<float> cumulative = new List<float>();
+            PathGeometry.BuildArcLengths(Corner, cumulative);
+
+            float ahead = PathGeometry.Project(Corner, cumulative, new Vector3(0.2f, 0f, 1f), 0f, 5f);
+            Assert.That(ahead, Is.EqualTo(1f).Within(1e-4f));
+
+            // The same query, once progress is already past it, stays at the progress made.
+            float held = PathGeometry.Project(Corner, cumulative, new Vector3(0.2f, 0f, 1f), 2.5f, 5f);
+            Assert.That(held, Is.EqualTo(2.5f).Within(1e-4f));
+        }
+
+        [Test]
+        public void PathGeometry_TrimEndShortensAcrossVertices()
+        {
+            List<Vector3> path = new List<Vector3>(Corner);
+            PathGeometry.TrimEnd(path, 0.5f);
+            Assert.That(path.Count, Is.EqualTo(3));
+            Assert.That(path[2], Is.EqualTo(new Vector3(1f, 0f, 2f)).Using(Vector3EqualityComparer.Instance));
+
+            PathGeometry.TrimEnd(path, 1.5f);
+            Assert.That(path.Count, Is.EqualTo(2), "the emptied last segment is removed");
+            Assert.That(path[1], Is.EqualTo(new Vector3(0f, 0f, 1.5f)).Using(Vector3EqualityComparer.Instance));
+        }
+
+        [Test]
+        public void SpringFollower_RoundsTheCornerAndSettlesOnTheGoal()
+        {
+            List<TrajectoryPoint> points = SpringPathFollower.Simulate(
+                Corner, true, Vector3.zero, 0f, 1.2f, new SpringFollowerSettings(), 80);
+
+            Assert.That(points.Count, Is.EqualTo(81));
+            Assert.That(points[0].Time, Is.EqualTo(0f));
+            Assert.That(points[0].Position, Is.EqualTo(Vector3.zero).Using(Vector3EqualityComparer.Instance));
+
+            TrajectoryPoint last = points[points.Count - 1];
+            Assert.That(PathGeometry.PlanarDistance(last.Position, Corner[2]), Is.LessThan(0.1f));
+            Assert.That(last.Speed, Is.LessThan(0.1f));
+
+            float peak = 0f;
+            float worstDeviation = 0f;
+            for (int i = 0; i < points.Count; i++)
+            {
+                peak = Mathf.Max(peak, points[i].Speed);
+                worstDeviation = Mathf.Max(
+                    worstDeviation, PathGeometry.DistanceToPath(Corner, points[i].Position));
+                if (i > 0)
+                {
+                    Assert.That(points[i].Time - points[i - 1].Time, Is.EqualTo(0.1f).Within(1e-4f));
+                }
+            }
+
+            Assert.That(points[1].Speed, Is.LessThan(0.6f), "a standing start must ease in");
+            Assert.That(peak, Is.LessThanOrEqualTo(1.2f + 1e-3f));
+            Assert.That(worstDeviation, Is.LessThan(0.5f), "must stay inside the default corridor");
+        }
+
+        [Test]
+        public void SpringFollower_KeepsGoingWhenThePathContinues()
+        {
+            Vector3[] shortPath = { Vector3.zero, new Vector3(0f, 0f, 1f) };
+            List<TrajectoryPoint> points = SpringPathFollower.Simulate(
+                shortPath, false, new Vector3(0f, 0f, 1.2f), 0f, 1.2f, new SpringFollowerSettings());
+
+            Assert.That(points[points.Count - 1].Position.z, Is.GreaterThan(3f));
+        }
+
+        [Test]
+        public void SpringFollower_TurnsInPlaceTowardsTheArrivalYaw()
+        {
+            Vector3[] standing = { new Vector3(2f, 0f, 3f) };
+            List<TrajectoryPoint> points = SpringPathFollower.Simulate(
+                standing, true, Vector3.zero, 0f, 1.2f, new SpringFollowerSettings(), 30, 10f, 1.2f);
+
+            TrajectoryPoint last = points[points.Count - 1];
+            Assert.That(PathGeometry.PlanarDistance(last.Position, standing[0]), Is.LessThan(1e-3f));
+            Assert.That(last.Yaw, Is.EqualTo(1.2f).Within(0.02f));
+        }
+
+        [Test]
+        public void SpringSource_ProducesAPlanInTheContractShape()
+        {
+            GameObject host = new GameObject("SpringSource");
+            try
+            {
+                SpringPathPlanSource source = host.AddComponent<SpringPathPlanSource>();
+                TrajectoryPlan plan = source.RequestPlanAsync(Request(Corner)).Result;
+
+                Assert.That(plan.IsFallback, Is.False);
+                Assert.That(plan.PointCount, Is.EqualTo(source.HorizonSteps + 1));
+                Assert.That(plan.Segments, Is.Not.Empty);
+                Assert.That(plan.Segments[0].Start, Is.EqualTo(0f));
+                for (int i = 1; i < plan.Segments.Count; i++)
+                {
+                    Assert.That(plan.Segments[i].Start,
+                        Is.EqualTo(plan.Segments[i - 1].End).Within(1e-4f), "segments must tile");
+                }
+
+                // Without a NavMesh path the source heads straight for the goal.
+                TrajectoryPlan direct = source.RequestPlanAsync(Request()).Result;
+                Vector3 end = direct.Points[direct.PointCount - 1].Position;
+                Assert.That(Vector3.Dot(end, new Vector3(1.5f, 0f, 2f).normalized), Is.GreaterThan(0.5f));
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(host);
+            }
+        }
+
+        [Test]
+        public void RootHistoryBuffer_ResamplesToExactSpacingEndingNow()
+        {
+            // Walking +z at 2 m/s, recorded on a 10 Hz clock; "now" falls between ticks.
+            RootHistoryBuffer buffer = new RootHistoryBuffer(4);
+            for (int i = 0; i < 6; i++)
+            {
+                float time = 0.1f * i;
+                buffer.Add(new RootSample(new Vector3(0f, 0f, 2f * time), 0f), time);
+            }
+
+            const float now = 0.53f;
+            List<RootSample> history = new List<RootSample>();
+            buffer.Resample(now, new RootSample(new Vector3(0f, 0f, 2f * now), 0f), 0.1f, 3, history);
+
+            Assert.That(history.Count, Is.EqualTo(3));
+            Assert.That(history[2].Position.z, Is.EqualTo(1.06f).Within(1e-4f));
+            // Equal spacing is what makes the planner's velocity estimate correct.
+            Assert.That(history[2].Position.z - history[1].Position.z, Is.EqualTo(0.2f).Within(1e-4f));
+            Assert.That(history[1].Position.z - history[0].Position.z, Is.EqualTo(0.2f).Within(1e-4f));
+        }
+
+        [Test]
+        public void RootHistoryBuffer_PadsWithTheOldestPoseAndHandlesAnEmptyBuffer()
+        {
+            RootHistoryBuffer buffer = new RootHistoryBuffer(4);
+            List<RootSample> history = new List<RootSample>();
+            RootSample here = new RootSample(new Vector3(1f, 0f, 1f), 0.5f);
+
+            buffer.Resample(3f, here, 0.1f, 3, history);
+            Assert.That(history.Count, Is.EqualTo(3));
+            Assert.That(history[0].Yaw, Is.EqualTo(0.5f));
+
+            buffer.Add(new RootSample(Vector3.zero, 0f), 2.95f);
+            buffer.Resample(3f, here, 0.1f, 3, history);
+            Assert.That(history[0].Position, Is.EqualTo(Vector3.zero).Using(Vector3EqualityComparer.Instance),
+                "before the first recording the character is taken to have stood still");
+            Assert.That(history[2].Position, Is.EqualTo(here.Position).Using(Vector3EqualityComparer.Instance));
+        }
+
+        [Test]
+        public void RequestJson_MatchesTheServiceContract()
+        {
+            RootSample[] history =
+            {
+                new RootSample(new Vector3(0f, 0f, -0.1f), 0f),
+                new RootSample(Vector3.zero, 0.25f)
+            };
+            string json = PlanRequestJson.Build(
+                Request(Corner, false, history, LocomotionGait.Run), 8);
+
+            Assert.That(json, Is.EqualTo(
+                "{\"history\":[{\"position\":[0,0,-0.1],\"yaw\":0},{\"position\":[0,0,0],\"yaw\":0.25}]," +
+                "\"path\":[[0,0,0],[0,0,2],[1.5,0,2]],\"path_ends_at_goal\":false," +
+                "\"gait\":\"run\",\"corridor_half_width\":0.5,\"candidates\":8}"));
+        }
+
+        [Test]
+        public void RequestJson_IsLocaleIndependentAndFillsDefaults()
+        {
+            CultureInfo previous = Thread.CurrentThread.CurrentCulture;
+            try
+            {
+                // German formats 0.5 as "0,5", which would silently corrupt the payload.
+                Thread.CurrentThread.CurrentCulture = new CultureInfo("de-DE");
+                string json = PlanRequestJson.Build(Request(), 16);
+
+                Assert.That(json, Does.Contain("\"corridor_half_width\":0.5"));
+                // No history: the current pose. No path: a straight line to the goal.
+                Assert.That(json, Does.StartWith("{\"history\":[{\"position\":[0,0,0],\"yaw\":0}],"));
+                Assert.That(json, Does.Contain("\"path\":[[0,0,0],[1.5,0,2]],\"path_ends_at_goal\":true"));
+            }
+            finally
+            {
+                Thread.CurrentThread.CurrentCulture = previous;
+            }
+        }
+
+        [Test]
+        public void RequestJson_RejectsNonFiniteValues()
+        {
+            Vector3[] broken = { Vector3.zero, new Vector3(float.NaN, 0f, 1f) };
+            Assert.Throws<ArgumentException>(() => PlanRequestJson.Build(Request(broken), 16));
+        }
+
+        [Test]
+        public void HttpSource_ReturnsTheServicePlanAndRecordsItsOrigin()
+        {
+            const string body =
+                "{\"plan_id\":\"plan-abc\",\"horizon\":0.1,\"trajectory\":[" +
+                "{\"t\":0.0,\"position\":[0,0,0],\"yaw\":0,\"velocity\":[0,0,1],\"angular_velocity\":0,\"speed\":1}," +
+                "{\"t\":0.1,\"position\":[0,0,0.1],\"yaw\":0,\"velocity\":[0,0,1],\"angular_velocity\":0,\"speed\":1}]," +
+                "\"segments\":[{\"start\":0.0,\"end\":0.2,\"action\":\"walk\",\"prompt\":\"p\"}]," +
+                "\"score\":3.0,\"fallback\":false,\"source\":\"model\"," +
+                "\"rejected_candidates\":3,\"candidates\":16,\"latency_ms\":41.5}";
+            GameObject host = new GameObject("HttpSource");
+            try
+            {
+                FakeTransport transport = new FakeTransport(body);
+                HttpTrajectoryPlanSource source = host.AddComponent<HttpTrajectoryPlanSource>();
+                source.Configure("http://planner.test:8787/", transport, null, false);
+
+                TrajectoryPlan plan = source.RequestPlanAsync(Request(Corner)).Result;
+
+                Assert.That(plan.PlanId, Is.EqualTo("plan-abc"));
+                Assert.That(plan.PointCount, Is.EqualTo(2));
+                Assert.That(transport.LastUrl, Is.EqualTo("http://planner.test:8787/plan"));
+                Assert.That(transport.LastBody, Does.Contain("\"path\":[[0,0,0],[0,0,2],[1.5,0,2]]"));
+                Assert.That(source.LastOrigin, Is.EqualTo(PlanOrigin.Model));
+                Assert.That(source.ModelPlanCount, Is.EqualTo(1));
+                Assert.That(source.LastServiceLatencyMs, Is.EqualTo(41.5f).Within(1e-3f));
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(host);
+            }
+        }
+
+        [Test]
+        public void HttpSource_FallsBackWhenTheServiceIsDown()
+        {
+            GameObject host = new GameObject("HttpSource");
+            try
+            {
+                SpringPathPlanSource spring = host.AddComponent<SpringPathPlanSource>();
+                HttpTrajectoryPlanSource source = host.AddComponent<HttpTrajectoryPlanSource>();
+                source.Configure(
+                    "http://planner.test:8787", new FakeTransport(new PlanServiceException("refused")),
+                    spring, false);
+
+                TrajectoryPlan plan = source.RequestPlanAsync(Request(Corner)).Result;
+
+                Assert.That(plan.PlanId, Does.StartWith("spring-"));
+                Assert.That(source.LastOrigin, Is.EqualTo(PlanOrigin.LocalFallbackAfterError));
+                Assert.That(source.ErrorFallbackCount, Is.EqualTo(1));
+                Assert.That(source.LastError, Does.Contain("refused"));
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(host);
+            }
+        }
+
+        [Test]
+        public void HttpSource_SurfacesTheFailureWhenThereIsNoFallback()
+        {
+            GameObject host = new GameObject("HttpSource");
+            try
+            {
+                HttpTrajectoryPlanSource source = host.AddComponent<HttpTrajectoryPlanSource>();
+                source.Configure("http://planner.test:8787", new FakeTransport("not json"), null, false);
+
+                AggregateException error = Assert.Throws<AggregateException>(
+                    () => { TrajectoryPlan unused = source.RequestPlanAsync(Request(Corner)).Result; });
+                Assert.That(error.InnerException, Is.InstanceOf<PlanServiceException>());
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(host);
+            }
+        }
+
+        [Test]
+        public void MetricsLogger_RowsUseTheInvariantCultureAndStayOneCellPerField()
+        {
+            CultureInfo previous = Thread.CurrentThread.CurrentCulture;
+            try
+            {
+                Thread.CurrentThread.CurrentCulture = new CultureInfo("de-DE");
+                string row = RootMotionMetricsLogger.FormatRow(
+                    1.5f, new Vector3(0.25f, 9f, -2f), 0.5f, 1.2f, -0.3f, 0.1f, true,
+                    "http:Model,odd", "plan-1", 0.125f);
+
+                Assert.That(row, Is.EqualTo(
+                    "1.500,0.2500,-2.0000,0.5000,1.2000,-0.3000,0.1000,1,http:Model;odd,plan-1,0.1250"));
+                Assert.That(row.Split(',').Length,
+                    Is.EqualTo(RootMotionMetricsLogger.Header.Split(',').Length));
+            }
+            finally
+            {
+                Thread.CurrentThread.CurrentCulture = previous;
+            }
+        }
+
+        private sealed class FakeTransport : IPlanHttpTransport
+        {
+            private readonly string body;
+            private readonly Exception failure;
+
+            public string LastUrl { get; private set; }
+            public string LastBody { get; private set; }
+
+            public FakeTransport(string responseBody)
+            {
+                body = responseBody;
+            }
+
+            public FakeTransport(Exception error)
+            {
+                failure = error;
+            }
+
+            public Task<string> PostJsonAsync(
+                string url,
+                string jsonBody,
+                int timeoutSeconds,
+                CancellationToken cancellationToken = default)
+            {
+                LastUrl = url;
+                LastBody = jsonBody;
+                return failure != null
+                    ? Task.FromException<string>(failure)
+                    : Task.FromResult(body);
+            }
+        }
+
+        private sealed class Vector3EqualityComparer : IEqualityComparer<Vector3>
+        {
+            public static readonly Vector3EqualityComparer Instance = new Vector3EqualityComparer();
+
+            public bool Equals(Vector3 a, Vector3 b)
+            {
+                return (a - b).sqrMagnitude < 1e-8f;
+            }
+
+            public int GetHashCode(Vector3 value)
+            {
+                return 0;
+            }
+        }
+    }
+}

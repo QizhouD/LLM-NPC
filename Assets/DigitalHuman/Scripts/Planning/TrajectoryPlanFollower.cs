@@ -38,6 +38,15 @@ namespace DigitalHuman.Planning
         [Tooltip("Keep the root on the NavMesh surface while following a plan.")]
         [SerializeField] private bool snapToNavMesh = true;
 
+        [Header("Root-motion planning")]
+        [Tooltip("Send the NavMesh route with each request. The planner then decides how to move along it, not where to go.")]
+        [SerializeField] private bool sendNavMeshPath = true;
+        [Tooltip("Optional. Supplies the last two seconds of root motion so replans continue smoothly.")]
+        [SerializeField] private RootHistoryRecorder historyRecorder;
+        [SerializeField] private LocomotionGait gait = LocomotionGait.Walk;
+        [Tooltip("How far, in metres, a plan may stray from the NavMesh route.")]
+        [SerializeField, Min(0.05f)] private float corridorHalfWidth = PlanRequest.DefaultCorridorHalfWidth;
+
         private ITrajectoryPlanSource source;
         private CancellationTokenSource requestCancellation;
         private TrajectoryPlan activePlan;
@@ -47,12 +56,22 @@ namespace DigitalHuman.Planning
         private float timeSinceReplan;
         private bool requestInFlight;
         private bool navMeshSuspended;
+        private readonly List<Vector3> pathCorners = new List<Vector3>();
+        private readonly List<RootSample> history = new List<RootSample>();
 
         public bool IsFollowing { get; private set; }
         public TrajectoryPlan ActivePlan => activePlan;
         public float PlanElapsed => planElapsed;
         public string SourceName => source != null ? source.SourceName : "<none>";
         public IReadOnlyList<PlanObstacle> ActiveObstacles => activeObstacles;
+        /// <summary>NavMesh route sent with the most recent request. Empty when none was found.</summary>
+        public IReadOnlyList<Vector3> LastPathCorners => pathCorners;
+
+        public LocomotionGait Gait
+        {
+            get => gait;
+            set => gait = value;
+        }
 
         /// <summary>Raised when a plan comes back with <c>fallback: true</c>.</summary>
         public event Action<TrajectoryPlan> FallbackPlanReceived;
@@ -75,6 +94,11 @@ namespace DigitalHuman.Planning
             if (navMeshMovement == null)
             {
                 navMeshMovement = GetComponent<AgentMovement>();
+            }
+
+            if (historyRecorder == null)
+            {
+                historyRecorder = GetComponent<RootHistoryRecorder>();
             }
 
             ResolveSource();
@@ -213,10 +237,11 @@ namespace DigitalHuman.Planning
             requestInFlight = true;
 
             PlanRequest request = BuildRequest();
-            _ = ExecuteRequestAsync(request, requestCancellation.Token);
+            _ = ExecuteRequestAsync(request, Time.time, requestCancellation.Token);
         }
 
-        private async Task ExecuteRequestAsync(PlanRequest request, CancellationToken token)
+        private async Task ExecuteRequestAsync(
+            PlanRequest request, float requestedAt, CancellationToken token)
         {
             try
             {
@@ -226,7 +251,7 @@ namespace DigitalHuman.Planning
                     return;
                 }
 
-                AdoptPlan(plan);
+                AdoptPlan(plan, requestedAt);
             }
             catch (OperationCanceledException)
             {
@@ -246,7 +271,7 @@ namespace DigitalHuman.Planning
             }
         }
 
-        private void AdoptPlan(TrajectoryPlan plan)
+        private void AdoptPlan(TrajectoryPlan plan, float requestedAt)
         {
             if (plan.IsFallback)
             {
@@ -269,7 +294,10 @@ namespace DigitalHuman.Planning
             }
 
             activePlan = plan;
-            planElapsed = 0f;
+            // A plan describes motion from the moment it was requested. A remote planner
+            // takes time to answer, and starting its plan at zero would pull the character
+            // back by that latency on every replan.
+            planElapsed = Mathf.Clamp(Time.time - requestedAt, 0f, plan.Horizon * 0.5f);
             IsFollowing = true;
             SuspendNavMesh();
             PlanStarted?.Invoke(plan);
@@ -288,6 +316,29 @@ namespace DigitalHuman.Planning
                 angularVelocity = current.AngularVelocity;
             }
 
+            // The request owns copies: a replan may rebuild these lists while an earlier
+            // request is still awaiting its answer.
+            Vector3[] corners = null;
+            bool pathEndsAtGoal = true;
+            if (sendNavMeshPath &&
+                activeGoal.Behavior != MotionIntent.Turn &&
+                NavMeshPathPlanner.TryBuildPath(root.position, activeGoal, pathCorners, out pathEndsAtGoal))
+            {
+                corners = pathCorners.ToArray();
+            }
+            else
+            {
+                pathCorners.Clear();
+                pathEndsAtGoal = true;
+            }
+
+            RootSample[] recentHistory = null;
+            if (historyRecorder != null && historyRecorder.isActiveAndEnabled)
+            {
+                historyRecorder.Snapshot(history);
+                recentHistory = history.ToArray();
+            }
+
             return new PlanRequest(
                 root.position,
                 yaw,
@@ -296,7 +347,12 @@ namespace DigitalHuman.Planning
                 intentAnimator != null ? intentAnimator.CurrentIntent : MotionIntent.Idle,
                 activeGoal,
                 activeObstacles,
-                activeGoal.Instruction);
+                activeGoal.Instruction,
+                corners,
+                pathEndsAtGoal,
+                recentHistory,
+                gait,
+                corridorHalfWidth);
         }
 
         private void SuspendNavMesh()

@@ -59,13 +59,31 @@ namespace DigitalHuman.Planning
         }
     }
 
+    /// <summary>One recorded root pose. The planner reads the last two seconds of these.</summary>
+    public readonly struct RootSample
+    {
+        public readonly Vector3 Position;
+        /// <summary>Root heading in radians about the Y axis.</summary>
+        public readonly float Yaw;
+
+        public RootSample(Vector3 position, float yaw)
+        {
+            Position = position;
+            Yaw = yaw;
+        }
+    }
+
     /// <summary>
     /// Everything the planner needs for one <c>POST /plan</c> call. Assembled by the
     /// embodiment layer and consumed by an <see cref="ITrajectoryPlanSource"/>.
     /// </summary>
     public sealed class PlanRequest
     {
+        public const float DefaultCorridorHalfWidth = 0.5f;
+
         private static readonly PlanObstacle[] NoObstacles = Array.Empty<PlanObstacle>();
+        private static readonly Vector3[] NoPath = Array.Empty<Vector3>();
+        private static readonly RootSample[] NoHistory = Array.Empty<RootSample>();
 
         public Vector3 CurrentPosition { get; }
         /// <summary>Current root heading in radians about the Y axis.</summary>
@@ -78,6 +96,20 @@ namespace DigitalHuman.Planning
         /// <summary>Free-form instruction forwarded to the text-to-motion adapter.</summary>
         public string Instruction { get; }
 
+        /// <summary>
+        /// Where to go, as the engine's pathfinder sees it: world-space corners starting at
+        /// the current position. Empty when no path was computed. The root-motion planner
+        /// decides how to move along this; it never decides the route.
+        /// </summary>
+        public IReadOnlyList<Vector3> PathCorners { get; }
+        /// <summary>False when <see cref="PathCorners"/> stops short of the goal.</summary>
+        public bool PathEndsAtGoal { get; }
+        /// <summary>Recent root poses at the control rate, oldest first.</summary>
+        public IReadOnlyList<RootSample> History { get; }
+        public LocomotionGait Gait { get; }
+        /// <summary>How far, in metres, a plan may stray from <see cref="PathCorners"/>.</summary>
+        public float CorridorHalfWidth { get; }
+
         public PlanRequest(
             Vector3 currentPosition,
             float currentYaw,
@@ -86,8 +118,24 @@ namespace DigitalHuman.Planning
             MotionIntent currentIntent,
             PlanGoal goal,
             IReadOnlyList<PlanObstacle> obstacles = null,
-            string instruction = null)
+            string instruction = null,
+            IReadOnlyList<Vector3> pathCorners = null,
+            bool pathEndsAtGoal = true,
+            IReadOnlyList<RootSample> history = null,
+            LocomotionGait gait = LocomotionGait.Walk,
+            float corridorHalfWidth = DefaultCorridorHalfWidth)
         {
+            if (corridorHalfWidth <= 0f)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(corridorHalfWidth), "Corridor half width must be positive.");
+            }
+
+            PathCorners = pathCorners ?? NoPath;
+            PathEndsAtGoal = pathEndsAtGoal;
+            History = history ?? NoHistory;
+            Gait = gait;
+            CorridorHalfWidth = corridorHalfWidth;
             CurrentPosition = currentPosition;
             CurrentYaw = currentYaw;
             CurrentVelocity = currentVelocity;

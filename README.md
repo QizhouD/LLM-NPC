@@ -145,7 +145,21 @@ Task<TrajectoryPlan> RequestPlanAsync(PlanRequest request, CancellationToken tok
 | --- | --- |
 | `MockTrajectoryPlanSource` | **Default.** Bezier route around obstacles with a trapezoidal speed profile. What the demo shows. |
 | `JsonFileTrajectoryPlanSource` | Replays a `results/*.json` export from the GTP repo. |
-| *(not yet)* `HttpTrajectoryPlanSource` | Will call `POST /plan` once the GTP service exists. |
+| `SpringPathPlanSource` | Classical baseline: follows the NavMesh route with a critically damped spring. Also the safe fallback. |
+| `HttpTrajectoryPlanSource` | Calls `POST /plan` on the GTP root-motion service, re-verifies the answer on the NavMesh, and falls back to the spring source. |
+
+### The root-motion layer (branch `feat/root-motion-layer`)
+
+The research direction changed: the planner no longer decides *where* to go. The
+NavMesh does that, and the learned model decides *how* to move along the route:
+speed profile, corner rounding, facing, and coming to rest. `TrajectoryPlanFollower`
+now sends the NavMesh corners, the last two seconds of root motion and a gait with
+every request. Wiring, the service command and the evaluation protocol are in
+[docs/root-motion-layer.md](docs/root-motion-layer.md).
+
+The new scripts and their 15 EditMode tests were written outside Unity and have
+**not yet been compiled or run in the editor**; run the test suite once before
+relying on them.
 
 The mock is the default for one reason: it produces a plan worth watching, and
 the trained checkpoint currently does not. Its tests assert the properties a real
