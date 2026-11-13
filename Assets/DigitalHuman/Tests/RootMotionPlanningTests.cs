@@ -465,6 +465,86 @@ namespace DigitalHuman.Tests
             }
         }
 
+        [Test]
+        public void Follower_DiscardsAStalePlanAndRequestsAgainImmediately()
+        {
+            using (FollowerRig rig = new FollowerRig())
+            {
+                rig.Follower.BeginPlanTo(new PlanGoal(MotionIntent.Walk, new Vector3(10f, 0f, 0f)));
+                Assert.That(rig.Source.Pending.Count, Is.EqualTo(1));
+
+                // Horizon 2 s, so the latency allowance is 1 s; this answer is 2 s old.
+                rig.Now = 2f;
+                rig.Source.Complete(0, LinePlan("p1", 0f, 2f, 2f));
+                Assert.That(rig.Follower.IsFollowing, Is.False, "a stale plan must not be executed");
+                Assert.That(rig.Follower.StalePlanDiscardCount, Is.EqualTo(1));
+                Assert.That(rig.Source.Pending.Count, Is.EqualTo(2), "re-requested at once");
+
+                rig.Now = 2.05f;
+                rig.Source.Complete(1, LinePlan("p2", 0f, 2f, 2f));
+                Assert.That(rig.Follower.IsFollowing, Is.True);
+                Assert.That(rig.Follower.ActivePlan.PlanId, Is.EqualTo("p2"));
+                Assert.That(rig.Follower.PlanElapsed, Is.EqualTo(0.05f).Within(1e-4f));
+            }
+        }
+
+        [Test]
+        public void Follower_DiscardsAtMostOnceInARow()
+        {
+            using (FollowerRig rig = new FollowerRig())
+            {
+                rig.Follower.BeginPlanTo(new PlanGoal(MotionIntent.Walk, new Vector3(10f, 0f, 0f)));
+                rig.Now = 2f;
+                rig.Source.Complete(0, LinePlan("p1", 0f, 2f, 2f));
+
+                // The re-request is slow too: adopted anyway, starting at the allowance.
+                rig.Now = 3.5f;
+                rig.Source.Complete(1, LinePlan("p2", 0f, 2f, 2f));
+                Assert.That(rig.Follower.IsFollowing, Is.True);
+                Assert.That(rig.Follower.ActivePlan.PlanId, Is.EqualTo("p2"));
+                Assert.That(rig.Follower.PlanElapsed, Is.EqualTo(1f).Within(1e-4f));
+                Assert.That(rig.Source.Pending.Count, Is.EqualTo(2), "no third request");
+                Assert.That(rig.Follower.StalePlanDiscardCount, Is.EqualTo(1));
+            }
+        }
+
+        [Test]
+        public void Follower_IgnoresAPlanThatArrivesAfterTheGoalIsReached()
+        {
+            using (FollowerRig rig = new FollowerRig(replanInterval: 0.2f))
+            {
+                int goalsReached = 0;
+                rig.Follower.GoalReached += () => goalsReached++;
+                rig.Follower.BeginPlanTo(new PlanGoal(MotionIntent.Walk, new Vector3(1f, 0f, 0f)));
+                rig.Source.Complete(0, LinePlan("p1", 0f, 2f, 2f));
+
+                // Walk at 1 m/s; the 0.2 s replan leaves a request in flight at arrival.
+                for (int i = 0; i < 12 && rig.Follower.IsFollowing; i++)
+                {
+                    rig.Now += 0.1f;
+                    rig.Follower.Advance(0.1f);
+                }
+
+                Assert.That(goalsReached, Is.EqualTo(1));
+                Assert.That(rig.Source.Pending.Count, Is.EqualTo(2), "a replan was in flight");
+                Assert.That(rig.Source.Tokens[1].IsCancellationRequested, Is.True,
+                    "arrival must cancel the pending request");
+                Vector3 arrived = rig.Host.transform.position;
+
+                rig.Source.Complete(1, LinePlan("late", arrived.x, arrived.x + 3f, 2f));
+                for (int i = 0; i < 5; i++)
+                {
+                    rig.Now += 0.1f;
+                    rig.Follower.Advance(0.1f);
+                }
+
+                Assert.That(rig.Follower.IsFollowing, Is.False);
+                Assert.That(goalsReached, Is.EqualTo(1));
+                Assert.That(rig.Host.transform.position, Is.EqualTo(arrived).Using(Vector3EqualityComparer.Instance),
+                    "a late plan must not move the character");
+            }
+        }
+
         /// <summary>A service response: a straight walk along +x from x0 to x1 over the horizon.</summary>
         private static string ModelPlanJson(string id, float x0, float x1, float horizon)
         {
@@ -500,6 +580,68 @@ namespace DigitalHuman.Tests
                 "{{\"plan_id\":\"{0}\",\"horizon\":{1},\"trajectory\":[{2}]," +
                 "\"segments\":[{{\"start\":0.0,\"end\":{1},\"action\":\"walk\",\"prompt\":\"p\"}}]," +
                 "\"score\":1.0,\"fallback\":false}}", id, horizon, points);
+        }
+
+        /// <summary>
+        /// A follower on a fresh object with a source whose answers the test releases by hand,
+        /// an injected clock, and no NavMesh involvement. Continuations run inline so a released
+        /// answer is adopted before the next line of the test.
+        /// </summary>
+        private sealed class FollowerRig : IDisposable
+        {
+            private readonly SynchronizationContext previousContext;
+
+            public GameObject Host { get; }
+            public TrajectoryPlanFollower Follower { get; }
+            public ControlledSource Source { get; } = new ControlledSource();
+            public float Now;
+
+            public FollowerRig(float replanInterval = 1f)
+            {
+                previousContext = SynchronizationContext.Current;
+                SynchronizationContext.SetSynchronizationContext(null);
+
+                Host = new GameObject("Follower");
+                Follower = Host.AddComponent<TrajectoryPlanFollower>();
+                UnityEditor.SerializedObject serialized = new UnityEditor.SerializedObject(Follower);
+                serialized.FindProperty("snapToNavMesh").boolValue = false;
+                serialized.FindProperty("sendNavMeshPath").boolValue = false;
+                serialized.FindProperty("replanInterval").floatValue = replanInterval;
+                serialized.ApplyModifiedPropertiesWithoutUndo();
+                Follower.Configure(null, null, null);
+                Follower.SetPlanSource(Source);
+                Follower.SetClock(() => Now);
+            }
+
+            public void Dispose()
+            {
+                UnityEngine.Object.DestroyImmediate(Host);
+                SynchronizationContext.SetSynchronizationContext(previousContext);
+            }
+        }
+
+        private sealed class ControlledSource : ITrajectoryPlanSource
+        {
+            public readonly List<TaskCompletionSource<TrajectoryPlan>> Pending =
+                new List<TaskCompletionSource<TrajectoryPlan>>();
+            public readonly List<CancellationToken> Tokens = new List<CancellationToken>();
+
+            public string SourceName => "controlled";
+
+            public Task<TrajectoryPlan> RequestPlanAsync(
+                PlanRequest request,
+                CancellationToken cancellationToken = default)
+            {
+                TaskCompletionSource<TrajectoryPlan> answer = new TaskCompletionSource<TrajectoryPlan>();
+                Pending.Add(answer);
+                Tokens.Add(cancellationToken);
+                return answer.Task;
+            }
+
+            public void Complete(int index, TrajectoryPlan plan)
+            {
+                Pending[index].SetResult(plan);
+            }
         }
 
         private sealed class FakeTransport : IPlanHttpTransport

@@ -47,8 +47,17 @@ namespace DigitalHuman.Planning
         [Tooltip("How far, in metres, a plan may stray from the NavMesh route.")]
         [SerializeField, Min(0.05f)] private float corridorHalfWidth = PlanRequest.DefaultCorridorHalfWidth;
 
+        /// <summary>
+        /// A plan older than its latency allowance is discarded and re-requested at most this
+        /// many times in a row; after that it is adopted with the capped start time, so a
+        /// slow source cannot leave the character waiting forever.
+        /// </summary>
+        public const int MaxConsecutiveStaleDiscards = 1;
+
         private ITrajectoryPlanSource source;
         private CancellationTokenSource requestCancellation;
+        private Func<float> clock;
+        private int consecutiveStaleDiscards;
         private TrajectoryPlan activePlan;
         private PlanGoal activeGoal;
         private IReadOnlyList<PlanObstacle> activeObstacles = Array.Empty<PlanObstacle>();
@@ -63,6 +72,10 @@ namespace DigitalHuman.Planning
         public TrajectoryPlan ActivePlan => activePlan;
         public float PlanElapsed => planElapsed;
         public string SourceName => source != null ? source.SourceName : "<none>";
+        /// <summary>The resolved plan source, or null before one is assigned.</summary>
+        public ITrajectoryPlanSource PlanSource => source;
+        /// <summary>Plans discarded because they arrived older than the latency allowance.</summary>
+        public int StalePlanDiscardCount { get; private set; }
         public IReadOnlyList<PlanObstacle> ActiveObstacles => activeObstacles;
         /// <summary>NavMesh route sent with the most recent request. Empty when none was found.</summary>
         public IReadOnlyList<Vector3> LastPathCorners => pathCorners;
@@ -134,6 +147,15 @@ namespace DigitalHuman.Planning
         }
 
         /// <summary>
+        /// Replaces the clock (seconds) used to age plans. Defaults to <see cref="Time.time"/>;
+        /// tests inject their own.
+        /// </summary>
+        public void SetClock(Func<float> secondsNow)
+        {
+            clock = secondsNow;
+        }
+
+        /// <summary>
         /// Requests a plan towards <paramref name="goal"/> and begins executing it.
         /// Obstacles are passed through to the planner unchanged.
         /// </summary>
@@ -142,11 +164,16 @@ namespace DigitalHuman.Planning
             activeGoal = goal;
             activeObstacles = obstacles ?? Array.Empty<PlanObstacle>();
             timeSinceReplan = 0f;
+            consecutiveStaleDiscards = 0;
             RequestPlan();
         }
 
         public void StopFollowing()
         {
+            // A request still in flight would otherwise be adopted after the stop and move
+            // the character again (seen as goals_reached=2 and a late 0.22 m step).
+            CancelPendingRequest();
+            consecutiveStaleDiscards = 0;
             IsFollowing = false;
             activePlan = null;
             planElapsed = 0f;
@@ -160,12 +187,20 @@ namespace DigitalHuman.Planning
 
         private void Update()
         {
+            Advance(Time.deltaTime);
+        }
+
+        /// <summary>
+        /// Advances plan execution by <paramref name="delta"/> seconds. <see cref="Update"/>
+        /// calls this every frame; it is public so tests can drive the follower directly.
+        /// </summary>
+        public void Advance(float delta)
+        {
             if (!IsFollowing || activePlan == null)
             {
                 return;
             }
 
-            float delta = Time.deltaTime;
             planElapsed += delta;
             timeSinceReplan += delta;
 
@@ -233,16 +268,18 @@ namespace DigitalHuman.Planning
             }
 
             CancelPendingRequest();
-            requestCancellation = new CancellationTokenSource();
+            CancellationTokenSource cancellation = new CancellationTokenSource();
+            requestCancellation = cancellation;
             requestInFlight = true;
 
             PlanRequest request = BuildRequest();
-            _ = ExecuteRequestAsync(request, Time.time, requestCancellation.Token);
+            _ = ExecuteRequestAsync(request, Now(), cancellation);
         }
 
         private async Task ExecuteRequestAsync(
-            PlanRequest request, float requestedAt, CancellationToken token)
+            PlanRequest request, float requestedAt, CancellationTokenSource cancellation)
         {
+            CancellationToken token = cancellation.Token;
             try
             {
                 TrajectoryPlan plan = await source.RequestPlanAsync(request, token);
@@ -267,7 +304,12 @@ namespace DigitalHuman.Planning
             }
             finally
             {
-                requestInFlight = false;
+                // Only the current request owns the flag. A superseded one finishing late, or
+                // this one having just started a re-request from AdoptPlan, must not clear it.
+                if (ReferenceEquals(requestCancellation, cancellation))
+                {
+                    requestInFlight = false;
+                }
             }
         }
 
@@ -293,11 +335,25 @@ namespace DigitalHuman.Planning
                 return;
             }
 
-            activePlan = plan;
             // A plan describes motion from the moment it was requested. A remote planner
             // takes time to answer, and starting its plan at zero would pull the character
             // back by that latency on every replan.
-            planElapsed = Mathf.Clamp(Time.time - requestedAt, 0f, plan.Horizon * 0.5f);
+            float age = Mathf.Max(0f, Now() - requestedAt);
+            float allowance = plan.Horizon * 0.5f;
+            if (age > allowance && consecutiveStaleDiscards < MaxConsecutiveStaleDiscards)
+            {
+                // Starting it at the capped time would jump the character back by the
+                // difference. Keep executing the current plan and ask again from here.
+                consecutiveStaleDiscards++;
+                StalePlanDiscardCount++;
+                timeSinceReplan = 0f;
+                RequestPlan();
+                return;
+            }
+
+            consecutiveStaleDiscards = 0;
+            activePlan = plan;
+            planElapsed = Mathf.Min(age, allowance);
             IsFollowing = true;
             SuspendNavMesh();
             PlanStarted?.Invoke(plan);
@@ -393,6 +449,11 @@ namespace DigitalHuman.Planning
             }
 
             navMeshSuspended = false;
+        }
+
+        private float Now()
+        {
+            return clock != null ? clock() : Time.time;
         }
 
         private void CancelPendingRequest()
