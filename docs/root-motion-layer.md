@@ -14,7 +14,7 @@ The C# here has not yet been compiled or run inside Unity.
 2. Open the project in Unity 6000.2.15f1 and wait for the import. **Fix any compile
    errors first**: this code was written without a Unity editor. If Unity rewrites
    any of the new `.meta` files, commit its version.
-3. Run the EditMode tests (**Window > General > Test Runner**). The 15 tests in
+3. Run the EditMode tests (**Window > General > Test Runner**). The 16 tests in
    `RootMotionPlanningTests` cover everything new that does not need a NavMesh.
 4. Press Play with the scene unchanged. `MockTrajectoryPlanSource` is still the
    plan source, so the demo must behave exactly as before. This confirms the
