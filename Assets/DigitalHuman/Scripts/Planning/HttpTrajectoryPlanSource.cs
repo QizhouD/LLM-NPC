@@ -35,7 +35,10 @@ namespace DigitalHuman.Planning
         [Header("Service")]
         [Tooltip("Base URL of `python -m gtp.rootmotion.service`.")]
         [SerializeField] private string serviceUrl = "http://127.0.0.1:8787";
-        [SerializeField, Min(1)] private int timeoutSeconds = 2;
+        [Tooltip("Give up on a request after this many milliseconds and use the fallback.")]
+        [SerializeField, Min(1)] private int timeoutMilliseconds = DefaultTimeoutMilliseconds;
+        [Tooltip("After a transport error or timeout, skip the service for this long and use the fallback directly.")]
+        [SerializeField, Min(0f)] private float retryAfterSeconds = DefaultRetryAfterSeconds;
         [Tooltip("Samples the service draws per request before filtering.")]
         [SerializeField, Range(1, 64)] private int candidates = 16;
 
@@ -45,8 +48,13 @@ namespace DigitalHuman.Planning
         [Tooltip("A component implementing ITrajectoryPlanSource, normally SpringPathPlanSource.")]
         [SerializeField] private MonoBehaviour fallbackSource;
 
+        public const int DefaultTimeoutMilliseconds = 500;
+        public const float DefaultRetryAfterSeconds = 5f;
+
         private IPlanHttpTransport transport;
         private ITrajectoryPlanSource fallback;
+        private Func<double> clock;
+        private double serviceSkippedUntil = double.NegativeInfinity;
 
         public string SourceName => $"http:{LastOrigin}";
 
@@ -54,8 +62,15 @@ namespace DigitalHuman.Planning
         public int RequestCount { get; private set; }
         public int ModelPlanCount { get; private set; }
         public int ServiceFallbackCount { get; private set; }
+        /// <summary>Requests the service failed (transport error, timeout or unusable response).</summary>
         public int ErrorFallbackCount { get; private set; }
+        /// <summary>Requests answered by the fallback without contacting the service, inside the retry window.</summary>
+        public int SkippedRequestCount { get; private set; }
         public int NavMeshRejectCount { get; private set; }
+        public int TimeoutMilliseconds => timeoutMilliseconds;
+        public float RetryAfterSeconds => retryAfterSeconds;
+        /// <summary>True while a recent transport failure keeps requests away from the service.</summary>
+        public bool IsServiceSkipped => Now() < serviceSkippedUntil;
         /// <summary>Planning time reported by the service for the last answered request.</summary>
         public float LastServiceLatencyMs { get; private set; }
         public string LastError { get; private set; } = string.Empty;
@@ -74,6 +89,22 @@ namespace DigitalHuman.Planning
             verifyOnNavMesh = verifyPlansOnNavMesh;
         }
 
+        /// <summary>Sets the timeout and the retry window after a transport failure.</summary>
+        public void ConfigureResilience(int timeoutMs, float retryAfter)
+        {
+            timeoutMilliseconds = Mathf.Max(1, timeoutMs);
+            retryAfterSeconds = Mathf.Max(0f, retryAfter);
+        }
+
+        /// <summary>
+        /// Replaces the clock (seconds) that times the retry window. Defaults to
+        /// <see cref="Time.realtimeSinceStartupAsDouble"/>; tests inject their own.
+        /// </summary>
+        public void SetClock(Func<double> secondsNow)
+        {
+            clock = secondsNow;
+        }
+
         public async Task<TrajectoryPlan> RequestPlanAsync(
             PlanRequest request,
             CancellationToken cancellationToken = default)
@@ -87,24 +118,51 @@ namespace DigitalHuman.Planning
             ResolveDependencies();
             RequestCount++;
 
-            TrajectoryPlan plan;
-            PlanResponseMeta meta;
+            if (IsServiceSkipped)
+            {
+                // A transport failure happened moments ago: asking again would only add the
+                // timeout to every replan. Answer from the fallback until the window ends.
+                SkippedRequestCount++;
+                return await FallBackAsync(
+                    request, PlanOrigin.LocalFallbackAfterError, null, cancellationToken);
+            }
+
+            string body;
             try
             {
-                string body = await transport.PostJsonAsync(
+                body = await transport.PostJsonAsync(
                     PlanEndpoint(),
                     PlanRequestJson.Build(request, candidates),
-                    timeoutSeconds,
+                    timeoutMilliseconds,
                     cancellationToken);
-                plan = TrajectoryPlan.FromJson(body);
-                meta = JsonUtility.FromJson<PlanResponseMeta>(body) ?? new PlanResponseMeta();
             }
-            catch (OperationCanceledException)
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
                 throw;
             }
             catch (Exception exception)
             {
+                // Unreachable, timed out or answered with an error status: stop asking for a while.
+                LastError = exception.Message;
+                ErrorFallbackCount++;
+                serviceSkippedUntil = Now() + retryAfterSeconds;
+                Debug.Log(
+                    $"[Planning] Planner service unavailable; using the fallback for {retryAfterSeconds:F1} s ({LastError})",
+                    this);
+                return await FallBackAsync(
+                    request, PlanOrigin.LocalFallbackAfterError, exception, cancellationToken);
+            }
+
+            TrajectoryPlan plan;
+            PlanResponseMeta meta;
+            try
+            {
+                plan = TrajectoryPlan.FromJson(body);
+                meta = JsonUtility.FromJson<PlanResponseMeta>(body) ?? new PlanResponseMeta();
+            }
+            catch (Exception exception)
+            {
+                // The service answered, so it is reachable: fall back for this request only.
                 LastError = exception.Message;
                 ErrorFallbackCount++;
                 return await FallBackAsync(
@@ -153,6 +211,12 @@ namespace DigitalHuman.Planning
                     throw new PlanServiceException($"{LastError} No fallback source is assigned.");
                 }
 
+                if (origin == PlanOrigin.LocalFallbackAfterError)
+                {
+                    throw new PlanServiceException(
+                        $"Planner service skipped after a recent failure ({LastError}). No fallback source is assigned.");
+                }
+
                 throw new PlanServiceException(LastError);
             }
 
@@ -183,6 +247,11 @@ namespace DigitalHuman.Planning
             }
 
             return trimmed + "/plan";
+        }
+
+        private double Now()
+        {
+            return clock != null ? clock() : Time.realtimeSinceStartupAsDouble;
         }
 
         private void ResolveDependencies()

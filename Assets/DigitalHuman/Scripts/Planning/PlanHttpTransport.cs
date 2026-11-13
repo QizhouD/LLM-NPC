@@ -11,20 +11,28 @@ namespace DigitalHuman.Planning
     {
         public long StatusCode { get; }
 
-        public PlanServiceException(string message, long statusCode = 0) : base(message)
+        /// <summary>True when the request was abandoned because it exceeded its timeout.</summary>
+        public bool IsTimeout { get; }
+
+        public PlanServiceException(string message, long statusCode = 0, bool isTimeout = false) : base(message)
         {
             StatusCode = statusCode;
+            IsTimeout = isTimeout;
         }
     }
 
     /// <summary>Seam between the HTTP plan source and the network, so tests need no server.</summary>
     public interface IPlanHttpTransport
     {
-        /// <summary>Posts JSON and returns the response body, or throws <see cref="PlanServiceException"/>.</summary>
+        /// <summary>
+        /// Posts JSON and returns the response body, or throws <see cref="PlanServiceException"/>,
+        /// with <see cref="PlanServiceException.IsTimeout"/> set when no answer arrived within
+        /// <paramref name="timeoutMilliseconds"/>.
+        /// </summary>
         Task<string> PostJsonAsync(
             string url,
             string jsonBody,
-            int timeoutSeconds,
+            int timeoutMilliseconds,
             CancellationToken cancellationToken = default);
     }
 
@@ -33,17 +41,20 @@ namespace DigitalHuman.Planning
         public async Task<string> PostJsonAsync(
             string url,
             string jsonBody,
-            int timeoutSeconds,
+            int timeoutMilliseconds,
             CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            int timeout = Math.Max(1, timeoutMilliseconds);
 
             byte[] payload = Encoding.UTF8.GetBytes(jsonBody ?? string.Empty);
             using (UnityWebRequest request = new UnityWebRequest(url, UnityWebRequest.kHttpVerbPOST))
             {
                 request.uploadHandler = new UploadHandlerRaw(payload);
                 request.downloadHandler = new DownloadHandlerBuffer();
-                request.timeout = Math.Max(1, timeoutSeconds);
+                // UnityWebRequest.timeout only takes whole seconds, so it is only a backstop,
+                // set past the real deadline; the millisecond timeout is enforced below.
+                request.timeout = (int)Math.Ceiling(timeout / 1000.0) + 1;
                 request.SetRequestHeader("Content-Type", "application/json");
 
                 TaskCompletionSource<bool> completion = new TaskCompletionSource<bool>();
@@ -55,13 +66,27 @@ namespace DigitalHuman.Planning
                     completion.TrySetCanceled();
                 });
 
-                try
+                using (CancellationTokenSource timer = new CancellationTokenSource())
                 {
-                    await completion.Task;
-                }
-                finally
-                {
-                    registration.Dispose();
+                    try
+                    {
+                        Task deadline = Task.Delay(timeout, timer.Token);
+                        // The continuation resumes on Unity's main thread, where Abort is legal.
+                        Task finished = await Task.WhenAny(completion.Task, deadline);
+                        if (finished == deadline && !completion.Task.IsCompleted)
+                        {
+                            request.Abort();
+                            throw new PlanServiceException(
+                                $"Planner service request timed out after {timeout} ms.", 0, true);
+                        }
+
+                        await completion.Task;
+                    }
+                    finally
+                    {
+                        timer.Cancel();
+                        registration.Dispose();
+                    }
                 }
 
                 cancellationToken.ThrowIfCancellationRequested();

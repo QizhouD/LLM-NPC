@@ -341,13 +341,176 @@ namespace DigitalHuman.Tests
             }
         }
 
+        [Test]
+        public void HttpSource_DefaultsToAHalfSecondTimeoutAndPassesItInMilliseconds()
+        {
+            GameObject host = new GameObject("HttpSource");
+            try
+            {
+                FakeTransport transport = new FakeTransport(ModelPlanJson("plan-t", 0f, 0.2f, 0.2f));
+                HttpTrajectoryPlanSource source = host.AddComponent<HttpTrajectoryPlanSource>();
+                source.Configure("http://planner.test:8787", transport, null, false);
+
+                Assert.That(source.TimeoutMilliseconds, Is.EqualTo(500));
+                Assert.That(source.RetryAfterSeconds, Is.EqualTo(5f));
+                TrajectoryPlan unused = source.RequestPlanAsync(Request(Corner)).Result;
+                Assert.That(transport.LastTimeoutMilliseconds, Is.EqualTo(500));
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(host);
+            }
+        }
+
+        [Test]
+        public void HttpSource_SkipsTheServiceForTheRetryWindowAfterATransportFailure()
+        {
+            GameObject host = new GameObject("HttpSource");
+            try
+            {
+                double now = 100.0;
+                SpringPathPlanSource spring = host.AddComponent<SpringPathPlanSource>();
+                FakeTransport transport = new FakeTransport(
+                    new PlanServiceException("timed out after 500 ms", 0, true));
+                HttpTrajectoryPlanSource source = host.AddComponent<HttpTrajectoryPlanSource>();
+                source.Configure("http://planner.test:8787", transport, spring, false);
+                source.ConfigureResilience(500, 5f);
+                source.SetClock(() => now);
+
+                TrajectoryPlan first = source.RequestPlanAsync(Request(Corner)).Result;
+                Assert.That(first.PlanId, Does.StartWith("spring-"));
+                Assert.That(transport.CallCount, Is.EqualTo(1));
+                Assert.That(source.ErrorFallbackCount, Is.EqualTo(1));
+                Assert.That(source.IsServiceSkipped, Is.True);
+
+                // Inside the window: answered by the fallback, the service is not contacted.
+                now = 104.9;
+                transport.Respond(ModelPlanJson("plan-ok", 0f, 0.2f, 0.2f));
+                TrajectoryPlan skipped = source.RequestPlanAsync(Request(Corner)).Result;
+                Assert.That(skipped.PlanId, Does.StartWith("spring-"));
+                Assert.That(transport.CallCount, Is.EqualTo(1));
+                Assert.That(source.SkippedRequestCount, Is.EqualTo(1));
+                Assert.That(source.LastOrigin, Is.EqualTo(PlanOrigin.LocalFallbackAfterError));
+
+                // After the window: one more try, and the recovered service is used again.
+                now = 105.1;
+                TrajectoryPlan recovered = source.RequestPlanAsync(Request(Corner)).Result;
+                Assert.That(recovered.PlanId, Is.EqualTo("plan-ok"));
+                Assert.That(transport.CallCount, Is.EqualTo(2));
+                Assert.That(source.LastOrigin, Is.EqualTo(PlanOrigin.Model));
+                Assert.That(source.IsServiceSkipped, Is.False);
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(host);
+            }
+        }
+
+        [Test]
+        public void HttpSource_FailingAgainAfterTheWindowReopensIt()
+        {
+            GameObject host = new GameObject("HttpSource");
+            try
+            {
+                double now = 0.0;
+                SpringPathPlanSource spring = host.AddComponent<SpringPathPlanSource>();
+                FakeTransport transport = new FakeTransport(new PlanServiceException("refused"));
+                HttpTrajectoryPlanSource source = host.AddComponent<HttpTrajectoryPlanSource>();
+                source.Configure("http://planner.test:8787", transport, spring, false);
+                source.ConfigureResilience(500, 5f);
+                source.SetClock(() => now);
+
+                TrajectoryPlan unused = source.RequestPlanAsync(Request(Corner)).Result;
+                now = 5.5;
+                unused = source.RequestPlanAsync(Request(Corner)).Result;
+                Assert.That(transport.CallCount, Is.EqualTo(2), "one retry once the window has passed");
+                now = 6.0;
+                unused = source.RequestPlanAsync(Request(Corner)).Result;
+                Assert.That(transport.CallCount, Is.EqualTo(2), "the failed retry starts a new window");
+                Assert.That(source.SkippedRequestCount, Is.EqualTo(1));
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(host);
+            }
+        }
+
+        [Test]
+        public void HttpSource_NavMeshRejectDoesNotSkipTheService()
+        {
+            GameObject host = new GameObject("HttpSource");
+            try
+            {
+                double now = 0.0;
+                SpringPathPlanSource spring = host.AddComponent<SpringPathPlanSource>();
+                // Far from any NavMesh, so the walkability check must reject it.
+                FakeTransport transport = new FakeTransport(ModelPlanJson("plan-off", 1000f, 1000.2f, 0.2f));
+                HttpTrajectoryPlanSource source = host.AddComponent<HttpTrajectoryPlanSource>();
+                source.Configure("http://planner.test:8787", transport, spring, true);
+                source.SetClock(() => now);
+
+                TrajectoryPlan first = source.RequestPlanAsync(Request(Corner)).Result;
+                Assert.That(first.PlanId, Does.StartWith("spring-"));
+                Assert.That(source.NavMeshRejectCount, Is.EqualTo(1));
+                Assert.That(source.IsServiceSkipped, Is.False);
+
+                now = 0.1;
+                TrajectoryPlan unused = source.RequestPlanAsync(Request(Corner)).Result;
+                Assert.That(transport.CallCount, Is.EqualTo(2));
+                Assert.That(source.SkippedRequestCount, Is.EqualTo(0));
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(host);
+            }
+        }
+
+        /// <summary>A service response: a straight walk along +x from x0 to x1 over the horizon.</summary>
+        private static string ModelPlanJson(string id, float x0, float x1, float horizon)
+        {
+            return LinePlanJson(id, x0, x1, horizon)
+                .Replace("\"fallback\":false", "\"fallback\":false,\"source\":\"model\"");
+        }
+
+        private static TrajectoryPlan LinePlan(string id, float x0, float x1, float horizon)
+        {
+            return TrajectoryPlan.FromJson(LinePlanJson(id, x0, x1, horizon));
+        }
+
+        private static string LinePlanJson(string id, float x0, float x1, float horizon)
+        {
+            int steps = Mathf.Max(1, Mathf.RoundToInt(horizon / 0.1f));
+            float speed = (x1 - x0) / horizon;
+            System.Text.StringBuilder points = new System.Text.StringBuilder();
+            for (int i = 0; i <= steps; i++)
+            {
+                float t = horizon * i / steps;
+                float x = Mathf.Lerp(x0, x1, (float)i / steps);
+                if (i > 0)
+                {
+                    points.Append(',');
+                }
+
+                points.Append(string.Format(CultureInfo.InvariantCulture,
+                    "{{\"t\":{0},\"position\":[{1},0,0],\"yaw\":1.5707964,\"velocity\":[{2},0,0]," +
+                    "\"angular_velocity\":0,\"speed\":{3}}}", t, x, speed, Mathf.Abs(speed)));
+            }
+
+            return string.Format(CultureInfo.InvariantCulture,
+                "{{\"plan_id\":\"{0}\",\"horizon\":{1},\"trajectory\":[{2}]," +
+                "\"segments\":[{{\"start\":0.0,\"end\":{1},\"action\":\"walk\",\"prompt\":\"p\"}}]," +
+                "\"score\":1.0,\"fallback\":false}}", id, horizon, points);
+        }
+
         private sealed class FakeTransport : IPlanHttpTransport
         {
-            private readonly string body;
-            private readonly Exception failure;
+            private string body;
+            private Exception failure;
 
             public string LastUrl { get; private set; }
             public string LastBody { get; private set; }
+            public int LastTimeoutMilliseconds { get; private set; }
+            public int CallCount { get; private set; }
 
             public FakeTransport(string responseBody)
             {
@@ -359,14 +522,23 @@ namespace DigitalHuman.Tests
                 failure = error;
             }
 
+            /// <summary>From now on, answer with <paramref name="responseBody"/>.</summary>
+            public void Respond(string responseBody)
+            {
+                body = responseBody;
+                failure = null;
+            }
+
             public Task<string> PostJsonAsync(
                 string url,
                 string jsonBody,
-                int timeoutSeconds,
+                int timeoutMilliseconds,
                 CancellationToken cancellationToken = default)
             {
+                CallCount++;
                 LastUrl = url;
                 LastBody = jsonBody;
+                LastTimeoutMilliseconds = timeoutMilliseconds;
                 return failure != null
                     ? Task.FromException<string>(failure)
                     : Task.FromResult(body);
