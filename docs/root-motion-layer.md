@@ -28,7 +28,8 @@ The C# here has not yet been compiled or run inside Unity.
    to `HttpTrajectoryPlanSource`, press Play. The Console should log
    `[Planning] Plan origin: Model`.
 7. Stop the service while the character is walking. It should keep walking on the
-   spring fallback and the Console should log
+   spring fallback, without stepping back or pausing, and the Console should log
+   `[Planning] Planner service unavailable; using the fallback for 5.0 s` and
    `[Planning] Plan origin: LocalFallbackAfterError` with the reason.
 
 If step 6 logs `LocalFallbackAfterError` with the service running, check the
@@ -99,6 +100,24 @@ records it per step:
 its own spring plan), `LocalFallbackAfterError` (service unreachable) or
 `LocalFallbackAfterNavMeshReject`.
 
+### Timeouts, retries and late plans
+
+- `HttpTrajectoryPlanSource` gives up on a request after **Timeout Milliseconds**
+  (default 500 ms) and uses its fallback for that request. The deadline is enforced
+  in milliseconds; `UnityWebRequest.timeout` (whole seconds) is only a backstop.
+- After a transport error or timeout it does not contact the service for
+  **Retry After Seconds** (default 5 s): requests go straight to the fallback, then
+  the service is tried once more. A NavMesh rejection or an unparseable answer does
+  not start this window, since the service was reachable.
+- A cold first request can exceed 500 ms; the character then walks on the spring
+  fallback for 5 s before the model takes over. Raise the timeout if that matters.
+- The follower discards a plan that arrives older than half its horizon and asks
+  again at once (at most once in a row), and starts each adopted plan at the time
+  whose planned position is closest to the character, so a late answer neither pulls
+  it back nor jumps it forward.
+- Reaching the goal, or any `StopFollowing`, cancels the request in flight; a late
+  answer can no longer move the character after arrival.
+
 ## Using the scene as an evaluation platform
 
 `RootMotionMetricsLogger` writes one CSV row per control step to
@@ -109,7 +128,15 @@ time,x,z,yaw,speed,acceleration,turn_rate,following,source,plan_id,path_deviatio
 ```
 
 Speed, acceleration and turn rate are measured from the executed transform, so they
-include replanning seams and NavMesh snapping. Suggested protocol:
+include replanning seams and NavMesh snapping.
+
+The last line is a footer. `fallback_plans`, `failed_requests` and `goals_reached`
+count follower events; `stale_plans_discarded` counts late plans the follower threw
+away. With `HttpTrajectoryPlanSource` as the plan source the footer also carries its
+own counters (`http_requests`, `http_model`, `http_service_fallback`,
+`http_error_fallback`, `http_skipped_after_error`, `http_navmesh_reject`); the HTTP
+source handles fallbacks itself, so those, not `failed_requests`, show how often the
+service was bypassed. Suggested protocol:
 
 1. Fix a set of start and goal pairs in the scene, including routes around the
    pickup boxes and at least one with a moving target.
