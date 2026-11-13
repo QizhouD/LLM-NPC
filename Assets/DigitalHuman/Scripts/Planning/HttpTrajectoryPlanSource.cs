@@ -122,6 +122,9 @@ namespace DigitalHuman.Planning
                     request, PlanOrigin.LocalFallbackAfterNavMeshReject, null, cancellationToken);
             }
 
+            // Clear the error before logging the origin change, so a switch back to the
+            // service is not reported with the reason of the previous fallback.
+            LastError = string.Empty;
             if (meta.source == "model")
             {
                 ModelPlanCount++;
@@ -133,7 +136,6 @@ namespace DigitalHuman.Planning
                 SetOrigin(PlanOrigin.ServiceFallback);
             }
 
-            LastError = string.Empty;
             return plan;
         }
 
