@@ -570,6 +570,30 @@ namespace DigitalHuman.Tests
             Assert.That(TrajectoryPlanFollower.AlignStart(standing, 0.7f, Vector3.zero), Is.EqualTo(0.7f));
         }
 
+        [Test]
+        public void MetricsLogger_FooterReportsTheHttpSourceCounters()
+        {
+            GameObject host = new GameObject("HttpSource");
+            try
+            {
+                SpringPathPlanSource spring = host.AddComponent<SpringPathPlanSource>();
+                HttpTrajectoryPlanSource source = host.AddComponent<HttpTrajectoryPlanSource>();
+                source.Configure("http://planner.test:8787", new FakeTransport(new PlanServiceException("refused")),
+                    spring, false);
+                TrajectoryPlan unused = source.RequestPlanAsync(Request(Corner)).Result;
+
+                Assert.That(RootMotionMetricsLogger.FormatFooter(0, 0, 1, 2, null), Is.EqualTo(
+                    "# fallback_plans=0,failed_requests=0,goals_reached=1,stale_plans_discarded=2"));
+                Assert.That(RootMotionMetricsLogger.FormatFooter(0, 0, 1, 0, source), Does.EndWith(
+                    ",http_requests=1,http_model=0,http_service_fallback=0,http_error_fallback=1," +
+                    "http_skipped_after_error=0,http_navmesh_reject=0"));
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(host);
+            }
+        }
+
         /// <summary>A service response: a straight walk along +x from x0 to x1 over the horizon.</summary>
         private static string ModelPlanJson(string id, float x0, float x1, float horizon)
         {

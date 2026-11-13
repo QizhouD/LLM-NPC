@@ -32,6 +32,10 @@ namespace DigitalHuman.Planning
         [SerializeField] private string runLabel = "run";
 
         private StreamWriter writer;
+        // Kept from the last sample: when Play mode ends, the follower may be destroyed
+        // before this logger writes its footer, and Unity then reports it as null.
+        private HttpTrajectoryPlanSource httpSource;
+        private int stalePlansDiscarded;
         private float accumulator;
         private float elapsed;
         private Vector3 previousPosition;
@@ -85,9 +89,10 @@ namespace DigitalHuman.Planning
 
             if (writer != null)
             {
-                writer.WriteLine(
-                    $"# fallback_plans={FallbackPlanCount},failed_requests={FailedRequestCount}," +
-                    $"goals_reached={GoalReachedCount}");
+                CacheSourceCounters();
+                writer.WriteLine(FormatFooter(
+                    FallbackPlanCount, FailedRequestCount, GoalReachedCount,
+                    stalePlansDiscarded, httpSource));
                 writer.Dispose();
                 writer = null;
                 Debug.Log($"[Planning] Root-motion log written to {LogPath}", this);
@@ -122,6 +127,7 @@ namespace DigitalHuman.Planning
                 turnRate = SpringPathFollower.ShortestAngle(previousYaw, yaw) / interval;
             }
 
+            CacheSourceCounters();
             bool following = follower != null && follower.IsFollowing;
             string sourceName = follower != null ? follower.SourceName : string.Empty;
             string planId = following && follower.ActivePlan != null ? follower.ActivePlan.PlanId : string.Empty;
@@ -137,6 +143,52 @@ namespace DigitalHuman.Planning
             previousYaw = yaw;
             previousSpeed = speed;
             hasPrevious = true;
+        }
+
+        private void CacheSourceCounters()
+        {
+            if (follower == null)
+            {
+                return;
+            }
+
+            stalePlansDiscarded = follower.StalePlanDiscardCount;
+            if (follower.PlanSource is HttpTrajectoryPlanSource http)
+            {
+                httpSource = http;
+            }
+        }
+
+        /// <summary>
+        /// Footer comment line. The first three counters are follower events: a fallback plan
+        /// the follower refused to execute, a request that surfaced an exception, and goals
+        /// reached. An HTTP source handles its own fallbacks without raising either follower
+        /// event, so when it is the plan source its counters are appended as well.
+        /// </summary>
+        public static string FormatFooter(
+            int fallbackPlans,
+            int failedRequests,
+            int goalsReached,
+            int stalePlansDiscarded,
+            HttpTrajectoryPlanSource http)
+        {
+            // Integers only, so the current culture cannot change the text.
+            string footer =
+                $"# fallback_plans={fallbackPlans},failed_requests={failedRequests}," +
+                $"goals_reached={goalsReached},stale_plans_discarded={stalePlansDiscarded}";
+            // A reference check, not Unity's null: the source may already be destroyed when
+            // Play mode ends, and its counters are plain properties that remain readable.
+            if (!ReferenceEquals(http, null))
+            {
+                footer +=
+                    $",http_requests={http.RequestCount},http_model={http.ModelPlanCount}," +
+                    $"http_service_fallback={http.ServiceFallbackCount}," +
+                    $"http_error_fallback={http.ErrorFallbackCount}," +
+                    $"http_skipped_after_error={http.SkippedRequestCount}," +
+                    $"http_navmesh_reject={http.NavMeshRejectCount}";
+            }
+
+            return footer;
         }
 
         /// <summary>One CSV row in the invariant culture. Public so the format is testable.</summary>
