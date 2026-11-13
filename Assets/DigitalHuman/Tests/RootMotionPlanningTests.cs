@@ -484,7 +484,8 @@ namespace DigitalHuman.Tests
                 rig.Source.Complete(1, LinePlan("p2", 0f, 2f, 2f));
                 Assert.That(rig.Follower.IsFollowing, Is.True);
                 Assert.That(rig.Follower.ActivePlan.PlanId, Is.EqualTo("p2"));
-                Assert.That(rig.Follower.PlanElapsed, Is.EqualTo(0.05f).Within(1e-4f));
+                Assert.That(rig.Follower.PlanElapsed, Is.EqualTo(0f).Within(1e-4f),
+                    "the character stood at the plan's start while waiting");
             }
         }
 
@@ -497,12 +498,12 @@ namespace DigitalHuman.Tests
                 rig.Now = 2f;
                 rig.Source.Complete(0, LinePlan("p1", 0f, 2f, 2f));
 
-                // The re-request is slow too: adopted anyway, starting at the allowance.
+                // The re-request is slow too: adopted anyway, never past the allowance.
                 rig.Now = 3.5f;
                 rig.Source.Complete(1, LinePlan("p2", 0f, 2f, 2f));
                 Assert.That(rig.Follower.IsFollowing, Is.True);
                 Assert.That(rig.Follower.ActivePlan.PlanId, Is.EqualTo("p2"));
-                Assert.That(rig.Follower.PlanElapsed, Is.EqualTo(1f).Within(1e-4f));
+                Assert.That(rig.Follower.PlanElapsed, Is.LessThanOrEqualTo(1f + 1e-4f));
                 Assert.That(rig.Source.Pending.Count, Is.EqualTo(2), "no third request");
                 Assert.That(rig.Follower.StalePlanDiscardCount, Is.EqualTo(1));
             }
@@ -543,6 +544,30 @@ namespace DigitalHuman.Tests
                 Assert.That(rig.Host.transform.position, Is.EqualTo(arrived).Using(Vector3EqualityComparer.Instance),
                     "a late plan must not move the character");
             }
+        }
+
+        [Test]
+        public void AlignStart_StartsWhereAWaitingCharacterStands()
+        {
+            // 1 m/s plan answered 0.5 s late while the character stood at its start.
+            TrajectoryPlan plan = LinePlan("p", 0f, 2f, 2f);
+            Assert.That(TrajectoryPlanFollower.AlignStart(plan, 0.5f, Vector3.zero),
+                Is.EqualTo(0f).Within(1e-4f), "starting at 0.5 s would jump it 0.5 m in one frame");
+        }
+
+        [Test]
+        public void AlignStart_KeepsTheCompensatedTimeWhenTheCharacterFollowedThePlan()
+        {
+            TrajectoryPlan plan = LinePlan("p", 0f, 2f, 2f);
+            Assert.That(TrajectoryPlanFollower.AlignStart(plan, 0.5f, new Vector3(0.5f, 0f, 0f)),
+                Is.EqualTo(0.5f).Within(0.02f));
+        }
+
+        [Test]
+        public void AlignStart_KeepsTheCompensatedTimeForATurnInPlace()
+        {
+            TrajectoryPlan standing = LinePlan("p", 0f, 0f, 2f);
+            Assert.That(TrajectoryPlanFollower.AlignStart(standing, 0.7f, Vector3.zero), Is.EqualTo(0.7f));
         }
 
         /// <summary>A service response: a straight walk along +x from x0 to x1 over the horizon.</summary>

@@ -353,7 +353,7 @@ namespace DigitalHuman.Planning
 
             consecutiveStaleDiscards = 0;
             activePlan = plan;
-            planElapsed = Mathf.Min(age, allowance);
+            planElapsed = AlignStart(plan, Mathf.Min(age, allowance), root.position);
             IsFollowing = true;
             SuspendNavMesh();
             PlanStarted?.Invoke(plan);
@@ -454,6 +454,34 @@ namespace DigitalHuman.Planning
         private float Now()
         {
             return clock != null ? clock() : Time.time;
+        }
+
+        /// <summary>
+        /// Chooses where in a newly adopted plan to start. Latency compensation assumes the
+        /// character moved as the plan does while the request was in flight. That fails when
+        /// it stood still waiting, or followed a slower plan, and starting at the compensated
+        /// time then jumps it forward in one frame. So start at the time in
+        /// [0, <paramref name="latest"/>] whose planned position is closest to where the
+        /// character is; a character that did follow the plan gets the compensated time.
+        /// Ties (for example a turn in place) keep the compensated time.
+        /// </summary>
+        public static float AlignStart(TrajectoryPlan plan, float latest, Vector3 position)
+        {
+            const float step = 0.02f;
+            const float tieTolerance = 1e-3f;
+            float best = latest;
+            float bestDistance = PathGeometry.PlanarDistance(plan.Sample(latest).Position, position);
+            for (float t = 0f; t < latest; t += step)
+            {
+                float distance = PathGeometry.PlanarDistance(plan.Sample(t).Position, position);
+                if (distance < bestDistance - tieTolerance)
+                {
+                    best = t;
+                    bestDistance = distance;
+                }
+            }
+
+            return best;
         }
 
         private void CancelPendingRequest()
