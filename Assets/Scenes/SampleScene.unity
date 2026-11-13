@@ -346,6 +346,10 @@ PrefabInstance:
       propertyPath: dialogueUI
       value: 
       objectReference: {fileID: 1450555}
+    - target: {fileID: 5433649698062990899, guid: ea8cd8dd18a61954d84c048b095eb1da, type: 3}
+      propertyPath: reachStandOff
+      value: 0.35
+      objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
@@ -1053,6 +1057,7 @@ GameObject:
   - component: {fileID: 472422331}
   - component: {fileID: 472422330}
   - component: {fileID: 472422329}
+  - component: {fileID: 472422333}
   m_Layer: 0
   m_Name: RedBox
   m_TagString: Pickup
@@ -1167,6 +1172,22 @@ MeshFilter:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 472422327}
   m_Mesh: {fileID: 10202, guid: 0000000000000000e000000000000000, type: 0}
+--- !u!208 &472422333
+NavMeshObstacle:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 472422327}
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Shape: 1
+  m_Extents: {x: 0.5, y: 0.5, z: 0.5}
+  m_MoveThreshold: 0.1
+  m_Carve: 1
+  m_CarveOnlyStationary: 1
+  m_Center: {x: 0, y: 0, z: 0}
+  m_TimeToStationary: 0.5
 --- !u!114 &500430615
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1194,6 +1215,7 @@ GameObject:
   - component: {fileID: 561172005}
   - component: {fileID: 561172004}
   - component: {fileID: 561172003}
+  - component: {fileID: 561172007}
   m_Layer: 0
   m_Name: GreenBox
   m_TagString: Pickup
@@ -1308,6 +1330,22 @@ MeshFilter:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 561172001}
   m_Mesh: {fileID: 10202, guid: 0000000000000000e000000000000000, type: 0}
+--- !u!208 &561172007
+NavMeshObstacle:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 561172001}
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Shape: 1
+  m_Extents: {x: 0.5, y: 0.5, z: 0.5}
+  m_MoveThreshold: 0.1
+  m_Carve: 1
+  m_CarveOnlyStationary: 1
+  m_Center: {x: 0, y: 0, z: 0}
+  m_TimeToStationary: 0.5
 --- !u!1 &580165862
 GameObject:
   m_ObjectHideFlags: 0
@@ -2503,6 +2541,7 @@ GameObject:
   - component: {fileID: 1331016969}
   - component: {fileID: 1331016968}
   - component: {fileID: 1331016967}
+  - component: {fileID: 1331016971}
   m_Layer: 0
   m_Name: BlueBox
   m_TagString: Pickup
@@ -2617,6 +2656,22 @@ MeshFilter:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1331016965}
   m_Mesh: {fileID: 10202, guid: 0000000000000000e000000000000000, type: 0}
+--- !u!208 &1331016971
+NavMeshObstacle:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1331016965}
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Shape: 1
+  m_Extents: {x: 0.5, y: 0.5, z: 0.5}
+  m_MoveThreshold: 0.1
+  m_Carve: 1
+  m_CarveOnlyStationary: 1
+  m_Center: {x: 0, y: 0, z: 0}
+  m_TimeToStationary: 0.5
 --- !u!114 &1465247548
 MonoBehaviour:
   m_ObjectHideFlags: 0
