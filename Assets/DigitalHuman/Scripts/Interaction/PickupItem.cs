@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.AI;
 
 namespace DigitalHuman
 {
@@ -56,12 +57,29 @@ namespace DigitalHuman
         {
             IsPickedUp = holder != null;
             Holder = holder;
+            // A carried item must not carve the NavMesh: it would cut a hole that follows
+            // the character around, under its own feet.
+            SetNavMeshCarving(!IsPickedUp);
         }
 
         public void MarkReleased()
         {
             IsPickedUp = false;
             Holder = null;
+            SetNavMeshCarving(true);
+        }
+
+        /// <summary>
+        /// Enables or disables the item's <see cref="NavMeshObstacle"/>, if it has one, so
+        /// routes go around it only while it rests in the world.
+        /// </summary>
+        private void SetNavMeshCarving(bool carve)
+        {
+            NavMeshObstacle obstacle = GetComponent<NavMeshObstacle>();
+            if (obstacle != null)
+            {
+                obstacle.enabled = carve;
+            }
         }
     }
 }

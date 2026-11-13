@@ -64,6 +64,21 @@ namespace DigitalHuman.Tests
         }
 
         [Test]
+        public void Pickup_StopsTheItemCarvingTheNavMeshUntilItIsPutDown()
+        {
+            UnityEngine.AI.NavMeshObstacle obstacle = box.AddComponent<UnityEngine.AI.NavMeshObstacle>();
+            obstacle.carving = true;
+            Assert.That(obstacle.enabled, Is.True);
+
+            interaction.Pickup(box);
+            Assert.That(obstacle.enabled, Is.False, "a carried item must not carve a hole around the carrier");
+
+            interaction.DropInFront();
+            Assert.That(obstacle.enabled, Is.True, "a put-down item carves again");
+            Assert.That(obstacle.carving, Is.True);
+        }
+
+        [Test]
         public void Drop_KeepsTheItemsSizeAndRestsItOnTheFloor()
         {
             interaction.Pickup(box);
